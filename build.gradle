@@ -1,4 +1,15 @@
-apply plugin: 'java'
+buildscript {
+    repositories {
+        jcenter()
+    }
+}
+
+plugins {
+    id 'java'
+    id 'maven'
+    id 'signing'
+    id 'com.palantir.git-version' version '0.5.1' //version helper
+}
 
 repositories {
     mavenCentral()
@@ -8,6 +19,144 @@ dependencies {
     testCompile 'org.testng:testng:6.9.6'
 }
 
+final isRelease = Boolean.getBoolean("release")
+version = (isRelease ? gitVersion() : gitVersion() + "-SNAPSHOT").replaceAll(".dirty", "")
+group = "org.broadinstitute"
+String cpath = "src/main/c"
+String libname = "libbwa"
+
+task buildBwaLib(type: Exec){
+    workingDir "$cpath"
+    outputs.files "$cpath/libbwa*"
+    outputs.dir "$cpath/bwa"
+    commandLine "make"
+    String home = System.properties."java.home"
+    //strip the trailing jre
+    String corrected = home.endsWith("jre") ?  home.substring(0, home.length() - 4) : home
+    environment JAVA_HOME : corrected
+    doFirst {  println "using $home -> $corrected as JAVA_HOME" }
+}
+
+clean {
+    delete "$cpath/bwa"
+    delete "$cpath/$libname*"
+    delete fileTree("$cpath") {include "$libname*", "*.o"}
+}
+
+processResources {
+    dependsOn buildBwaLib
+    from cpath
+    include "$libname*"
+}
+
 test {
     useTestNG()
+    testLogging {
+        testLogging {
+            events "skipped", "failed"
+            exceptionFormat = "full"
+        }
+        afterSuite { desc, result ->
+            if (!desc.parent) { // will match the outermost suite
+                println "Results: ${result.resultType} (${result.testCount} tests, ${result.successfulTestCount} successes, ${result.failedTestCount} failures, ${result.skippedTestCount} skipped)"
+            }
+        }
+    }
 }
+
+javadoc {
+    options.addStringOption('Xdoclint:none', '-quiet')
+}
+
+task javadocJar(type: Jar, dependsOn: javadoc) {
+    classifier = 'javadoc'
+    from 'build/docs/javadoc'
+}
+
+task sourcesJar(type: Jar) {
+    from sourceSets.main.allSource
+    classifier = 'sources'
+}
+
+/**
+ *This specifies what artifacts will be built and uploaded when performing a maven upload.
+ */
+artifacts {
+    archives jar
+    archives javadocJar
+    archives sourcesJar
+}
+
+/**
+ * Sign non-snapshot releases with our secret key.  This should never need to be invoked directly.
+ */
+signing {
+    required { isRelease && gradle.taskGraph.hasTask("uploadArchives") }
+    sign configurations.archives
+}
+
+def assertLibExists(lib){
+    if ( ! file(lib).exists()){
+        throw new GradleException("Could not perform a maven release because $lib is missing.  You must include both OSX and Linux binaries to release. " +
+                "You can run scripts/build_both_dylib_and_so.sh to build both if you are on a Broad Institute connected mac.")
+    }
+}
+
+/**
+ * Upload a release to sonatype.  You must be an authorized uploader and have your sonatype
+ * username and password information in your gradle properties file.  See the readme for more info.
+ *
+ * For releasing to your local maven repo, use gradle install
+ */
+uploadArchives {
+    doFirst {
+        println "Attempting to upload version:$version"
+        if (isRelease){
+            assertLibExists("$cpath/${libname}.Linux.so")
+            assertLibExists("$cpath/${libname}.Darwin.dylib")
+        }
+    }
+    repositories {
+        mavenDeployer {
+            beforeDeployment { MavenDeployment deployment -> signing.signPom(deployment) }
+
+            repository(url: "https://oss.sonatype.org/service/local/staging/deploy/maven2/") {
+                authentication(userName: project.findProperty("sonatypeUsername"), password: project.findProperty("sonatypePassword"))
+            }
+
+            snapshotRepository(url: "https://artifactory.broadinstitute.org/artifactory/libs-snapshot-local/") {
+                authentication(userName: System.env.ARTIFACTORY_USERNAME, password: System.env.ARTIFACTORY_PASSWORD)
+            }
+
+            pom.project {
+                name 'gatk-bwamem-jni'
+                packaging 'jar'
+                description 'java bindings for the bwa-mem assembler'
+                url 'http://github.com/broadinstitute/gatk-bwamem-jni'
+
+                scm {
+                    url 'scm:git@github.com:broadinstitute/gatk-bwamem-jni.git'
+                    connection 'scm:git@github.com:broadinstitute/gatk-bwamem-jni.git'
+                    developerConnection 'scm:git@github.com:broadinstitute/gatk-bwamem-jni.git'
+                }
+
+                developers {
+                    developer {
+                        id = "gatkdev"
+                        name = "GATK Development Team"
+                        email = "gatk-dev-public@broadinstitute.org"
+                    }
+                }
+
+                licenses {
+                    license {
+                        name 'BSD 3-Clause'
+                        url 'https://github.com/broadinstitute/gatk-bwamem-jni/blob/master/LICENSE.TXT'
+                        distribution 'repo'
+                    }
+                }
+            }
+        }
+    }
+}
+
