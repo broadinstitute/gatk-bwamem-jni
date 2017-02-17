@@ -1,4 +1,19 @@
-apply plugin: 'java'
+buildscript {
+    repositories {
+        jcenter()
+    }
+}
+
+plugins {
+    id 'java'
+    id 'maven'
+    id 'signing'
+    id 'c'
+    id 'org.ajoberstar.grgit' version '1.6.0' //git operations
+    id 'com.palantir.git-version' version '0.5.1' //version helper
+}
+
+import org.ajoberstar.grgit.Grgit
 
 repositories {
     mavenCentral()
@@ -8,6 +23,216 @@ dependencies {
     testCompile 'org.testng:testng:6.9.6'
 }
 
+final isRelease = Boolean.getBoolean("release")
+version = (isRelease ? gitVersion() : gitVersion() + "-SNAPSHOT").replaceAll(".dirty", "")
+
+final String BWA_COMMIT = "ec85a563e64710e7fc8c8c0b373d80570e245bd1"
+def CLIB = new File("$buildDir/clib")
+def BWA_CLONE_DIR = new File("$CLIB/bwa")
+
+task cloneBWA {
+    description "clone bwa"
+    outputs.dir BWA_CLONE_DIR
+    doLast {
+        BWA_CLONE_DIR.deleteDir()
+        def grgit = Grgit.clone(dir: "$BWA_CLONE_DIR",
+                uri: 'https://github.com/lh3/bwa.git')
+        grgit.checkout(branch: BWA_COMMIT)
+    }
+}
+
+task writeVersionHeader dependsOn cloneBWA {
+    def BWA_VERSION_HEADER = new File("$BWA_CLONE_DIR/bwa_commit.h")
+    description "record the bwa version"
+    outputs.files BWA_VERSION_HEADER
+    doLast {
+        BWA_VERSION_HEADER.write "#define BWA_COMMIT \"$BWA_COMMIT\""
+    }
+
+}
+
+model {
+    platforms {
+        x64 {
+            architecture "x86_64"
+            operatingSystem "linux"
+        }
+        osx {
+            architecture "x86_64"
+            operatingSystem "osx"
+        }
+    }
+
+    components {
+        bwalib(NativeLibrarySpec) {
+            sources {
+                c {
+                    source {
+                        srcDir BWA_CLONE_DIR
+                        include "utils.c", "kthread.c", "kstring.c", "ksw.c", "bwt.c", "bntseq.c", "bwa.c", "bwamem.c", "bwamem_pair.c", "bwamem_extra.c", "malloc_wrap.c"
+                    }
+                    exportedHeaders {
+                        srcDir BWA_CLONE_DIR
+                    }
+                }
+            }
+            binaries.all {
+                cCompiler.args "-g", '-Wall', '-O2', '-Wno-unused-function', "-DUSE_MALLOC_WRAPPERS", "-DHAVE_PTHREAD"
+                linker.args "-lz", "-lm", '-lpthread'
+            }
+        }
+
+        bwaJNI(NativeLibrarySpec) {
+            sources.c.source {
+                srcDir "src/main/c/"
+                include "**/*.c"
+            }
+            binaries.withType(SharedLibraryBinarySpec) { binary ->
+                cCompiler.args "-I", "${System.properties['java.home']}/../include"
+                cCompiler.args "-Wall", "-fPIC", "-O2"
+                linker.args "-lz", "-lm", '-lpthread'
+                lib library: 'bwalib', linkage: 'static'
+
+                if (targetPlatform.operatingSystem.macOsX) {
+                    cCompiler.args "-I", "${System.properties['java.home']}/../include/Darwin"
+                    sharedLibraryFile "$buildDir/libs/jni/libbwa.Darwin.dylib"
+                } else {
+                    cCompiler.args "-I", "${System.properties['java.home']}/../include/linux"
+                    sharedLibraryFile "$buildDir/libs/jni/libbwa.Linux.so"
+                }
+                jar.dependsOn binary
+                test.dependsOn binary
+            }
+            binaries.withType(StaticLibraryBinarySpec){
+                buildable = false
+            }
+        }
+    }
+
+    tasks.bwalibStaticLibrary {
+        dependsOn cloneBWA, writeVersionHeader
+    }
+
+    tasks.bwalibSharedLibrary {
+        dependsOn cloneBWA, writeVersionHeader
+    }
+
+
+}
+
+processResources {
+    from "$buildDir/libs/jni"
+}
+
 test {
     useTestNG()
+    testLogging {
+        testLogging {
+            events "skipped", "failed"
+            exceptionFormat = "full"
+        }
+        afterSuite { desc, result ->
+            if (!desc.parent) { // will match the outermost suite
+                println "Results: ${result.resultType} (${result.testCount} tests, ${result.successfulTestCount} successes, ${result.failedTestCount} failures, ${result.skippedTestCount} skipped)"
+            }
+        }
+    }
 }
+
+
+javadoc {
+    options.addStringOption('Xdoclint:none', '-quiet')
+}
+
+task javadocJar(type: Jar, dependsOn: javadoc) {
+    classifier = 'javadoc'
+    from 'build/docs/javadoc'
+}
+
+task sourcesJar(type: Jar) {
+    from sourceSets.main.allSource
+    classifier = 'sources'
+}
+
+/**
+ *This specifies what artifacts will be built and uploaded when performing a maven upload.
+ */
+artifacts {
+    archives jar
+    archives javadocJar
+    archives sourcesJar
+}
+
+/**
+ * Sign non-snapshot releases with our secret key.  This should never need to be invoked directly.
+ */
+signing {
+    required { isRelease && gradle.taskGraph.hasTask("uploadArchives") }
+    sign configurations.archives
+}
+
+def assertLibExists(lib){
+    if ( ! file(lib).exists()){
+        throw new GradleException("Could not perform a maven release because $lib is missing.  You must include both OSX and Linux binaries to release. " +
+                "You can run scripts/build_both_dylib_and_so.sh to build both if you are on a Broad Institute connected mac.")
+    }
+}
+
+/**
+ * Upload a release to sonatype.  You must be an authorized uploader and have your sonatype
+ * username and password information in your gradle properties file.  See the readme for more info.
+ *
+ * For releasing to your local maven repo, use gradle install
+ */
+uploadArchives {
+    doFirst {
+        println "Attempting to upload version:$version"
+        if (isRelease){
+            assertLibExists("$buildDir/libs/jni/libbwa.Linux.so")
+            assertLibExists("$buildDir/libs/jni/libbwa.Darwin.dylib")
+        }
+    }
+    repositories {
+        mavenDeployer {
+            beforeDeployment { MavenDeployment deployment -> signing.signPom(deployment) }
+
+            repository(url: "https://oss.sonatype.org/service/local/staging/deploy/maven2/") {
+                authentication(userName: project.findProperty("sonatypeUsername"), password: project.findProperty("sonatypePassword"))
+            }
+
+            snapshotRepository(url: "https://artifactory.broadinstitute.org/artifactory/libs-snapshot-local/") {
+                authentication(userName: System.env.ARTIFACTORY_USERNAME, password: System.env.ARTIFACTORY_PASSWORD)
+            }
+
+            pom.project {
+                name 'gatk-bwamem-jni'
+                packaging 'jar'
+                description 'java Bindings for the bwa-mem assembler'
+                url 'http://github.com/broadinstitute/gatk-bwamem-jni'
+
+                scm {
+                    url 'scm:git@github.com:broadinstitute/gatk-bwamem-jni.git'
+                    connection 'scm:git@github.com:broadinstitute/gatk-bwamem-jni.git'
+                    developerConnection 'scm:git@github.com:broadinstitute/gatk-bwamem-jni.git'
+                }
+
+                developers {
+                    developer {
+                        id = "gatkdev"
+                        name = "GATK Development Team"
+                        email = "gatk-dev-public@broadinstitute.org"
+                    }
+                }
+
+                licenses {
+                    license {
+                        name 'BSD 3-Clause'
+                        url 'https://github.com/broadinstitute/gatk-bwamem-jni/blob/master/LICENSE.TXT'
+                        distribution 'repo'
+                    }
+                }
+            }
+        }
+    }
+}
+

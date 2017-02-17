@@ -2,7 +2,7 @@
 #include <fcntl.h>
 #include <stdlib.h>
 #include "jnibwa.h"
-#include "bwa/bwa_commit.h"
+#include "bwa_commit.h"
 
 JNIEXPORT jboolean JNICALL
 Java_org_broadinstitute_hellbender_utils_bwa_BwaMemIndex_createIndexImageFile( JNIEnv* env, jclass cls, jstring referencePrefix, jstring imageFileName ) {

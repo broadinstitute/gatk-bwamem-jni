@@ -10,7 +10,7 @@
 #include <sys/mman.h>
 #include <errno.h>
 #include "jnibwa.h"
-#include "bwa/kstring.h"
+#include "kstring.h"
 
 static inline void kput32( int32_t val, kstring_t* str ) {
 	kputsn((char*)&val, sizeof(int32_t), str);

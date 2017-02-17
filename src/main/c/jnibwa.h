@@ -5,7 +5,7 @@
 #ifndef JNIBWA_H_
 #define JNIBWA_H_
 
-#include "bwa/bwamem.h"
+#include "bwamem.h"
 
 int jnibwa_createIndexFile( char const* refName, char const* imgSuffix );
 bwaidx_t* jnibwa_openIndex( int fd );
