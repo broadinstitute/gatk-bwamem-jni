@@ -26,6 +26,13 @@ public final class BwaMemIndexTest {
     void closeIndex() { index.close(); index = null; }
 
     @Test
+    void testOptsSize() {
+        try ( final BwaMemAligner aligner = new BwaMemAligner(index) ) {
+            Assert.assertEquals(aligner.getOptsSize(), aligner.getExpectedOptsSize());
+        }
+    }
+
+    @Test
     void testSimple() {
         final BwaMemAligner aligner = new BwaMemAligner(index);
         final List<List<BwaMemAlignment>> alignments = aligner.alignSeqs(Collections.singletonList(

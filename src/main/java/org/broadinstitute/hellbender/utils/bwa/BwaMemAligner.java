@@ -14,10 +14,11 @@ import java.util.function.Function;
  *   Set your bwa-mem parameters
  *   Align 1 or more chunks of sequences with alignSeqs
  *   Close the BwaMemAligner
+ * This class is not thread-safe, but it's very light-weight:  just use a separate instance in each thread.  
  */
 public final class BwaMemAligner implements AutoCloseable {
     private final BwaMemIndex index;
-    private final ByteBuffer opts;
+    private ByteBuffer opts;
 
     public BwaMemAligner( final BwaMemIndex index ) {
         this.index = index;
@@ -28,37 +29,42 @@ public final class BwaMemAligner implements AutoCloseable {
         opts.order(ByteOrder.nativeOrder()).position(0).limit(opts.capacity());
     }
 
+    public boolean isOpen() { return opts != null; }
+
     @Override
     public void close() {
-        BwaMemIndex.destroyByteBuffer(opts);
+        if ( opts != null ) {
+            BwaMemIndex.destroyByteBuffer(opts);
+            opts = null;
+        }
     }
 
-    public int getMatchScoreOption() { return opts.getInt(0); }
-    public void setMatchScoreOption( final int a ) { opts.putInt(0, a); }
-    public int getMismatchPenaltyOption() { return opts.getInt(4); }
-    public void setMismatchPenaltyOption( final int b ) { opts.putInt(4, b); }
-    public int getDGapOpenPenaltyOption() { return opts.getInt(8); }
-    public void setDGapOpenPenaltyOption( final int o_del ) { opts.putInt(8, o_del); }
-    public int getDGapExtendPenaltyOption() { return opts.getInt(12); }
-    public void setDGapExtendPenaltyOption( final int e_del ) { opts.putInt(12, e_del); }
-    public int getIGapOpenPenaltyOption() { return opts.getInt(16); }
-    public void setIGapOpenPenaltyOption( final int o_ins ) { opts.putInt(16, o_ins); }
-    public int getIGapExtendPenaltyOption() { return opts.getInt(20); }
-    public void setIGapExtendPenaltyOption( final int e_ins ) { opts.putInt(20, e_ins); }
-    public int getUnpairedPenaltyOption() { return opts.getInt(24); }
-    public void setUnpairedPenaltyOption( final int pen_unpaired ) { opts.putInt(24, pen_unpaired); }
-    public int getClip5PenaltyOption() { return opts.getInt(28); }
-    public void setClip5PenaltyOption( final int pen_clip5 ) { opts.putInt(28, pen_clip5); }
-    public int getClip3PenaltyOption() { return opts.getInt(32); }
-    public void setClip3PenaltyOption( final int pen_clip3 ) { opts.putInt(32, pen_clip3); }
-    public int getBandwidthOption() { return opts.getInt(36); }
-    public void setBandwidthOption( final int w ) { opts.putInt(36, w); }
-    public int getZDropOption() { return opts.getInt(40); }
-    public void setZDropOption( final int zdrop ) { opts.putInt(40, zdrop); }
-    public long getMaxMemIntvOption() { return opts.getLong(48); }
-    public void setMaxMemIntvOption( final long max_mem_intv ) { opts.putLong(48, max_mem_intv); }
-    public int getOutputScoreThresholdOption() { return opts.getInt(56); }
-    public void setOutputScoreThresholdOption( final int T ) { opts.putInt(56, T); }
+    public int getMatchScoreOption() { return getOpts().getInt(0); }
+    public void setMatchScoreOption( final int a ) { getOpts().putInt(0, a); }
+    public int getMismatchPenaltyOption() { return getOpts().getInt(4); }
+    public void setMismatchPenaltyOption( final int b ) { getOpts().putInt(4, b); }
+    public int getDGapOpenPenaltyOption() { return getOpts().getInt(8); }
+    public void setDGapOpenPenaltyOption( final int o_del ) { getOpts().putInt(8, o_del); }
+    public int getDGapExtendPenaltyOption() { return getOpts().getInt(12); }
+    public void setDGapExtendPenaltyOption( final int e_del ) { getOpts().putInt(12, e_del); }
+    public int getIGapOpenPenaltyOption() { return getOpts().getInt(16); }
+    public void setIGapOpenPenaltyOption( final int o_ins ) { getOpts().putInt(16, o_ins); }
+    public int getIGapExtendPenaltyOption() { return getOpts().getInt(20); }
+    public void setIGapExtendPenaltyOption( final int e_ins ) { getOpts().putInt(20, e_ins); }
+    public int getUnpairedPenaltyOption() { return getOpts().getInt(24); }
+    public void setUnpairedPenaltyOption( final int pen_unpaired ) { getOpts().putInt(24, pen_unpaired); }
+    public int getClip5PenaltyOption() { return getOpts().getInt(28); }
+    public void setClip5PenaltyOption( final int pen_clip5 ) { getOpts().putInt(28, pen_clip5); }
+    public int getClip3PenaltyOption() { return getOpts().getInt(32); }
+    public void setClip3PenaltyOption( final int pen_clip3 ) { getOpts().putInt(32, pen_clip3); }
+    public int getBandwidthOption() { return getOpts().getInt(36); }
+    public void setBandwidthOption( final int w ) { getOpts().putInt(36, w); }
+    public int getZDropOption() { return getOpts().getInt(40); }
+    public void setZDropOption( final int zdrop ) { getOpts().putInt(40, zdrop); }
+    public long getMaxMemIntvOption() { return getOpts().getLong(48); }
+    public void setMaxMemIntvOption( final long max_mem_intv ) { getOpts().putLong(48, max_mem_intv); }
+    public int getOutputScoreThresholdOption() { return getOpts().getInt(56); }
+    public void setOutputScoreThresholdOption( final int T ) { getOpts().putInt(56, T); }
 
     public void alignPairs() { setFlagOption(MEM_F_PE|getFlagOption()); }
 
@@ -72,56 +78,60 @@ public final class BwaMemAligner implements AutoCloseable {
     public static final int MEM_F_SOFTCLIP = 0x200;
     public static final int MEM_F_SMARTPE = 0x400;
     public static final int MEM_F_PRIMARY5 = 0x800;
-    public int getFlagOption() { return opts.getInt(60); }
-    public void setFlagOption( final int flag ) { opts.putInt(60, flag); }
+    public int getFlagOption() { return getOpts().getInt(60); }
+    public void setFlagOption( final int flag ) { getOpts().putInt(60, flag); }
 
-    public int getMinSeedLengthOption() { return opts.getInt(64); }
-    public void setMinSeedLengthOption( final int min_seed_len ) { opts.putInt(64, min_seed_len); }
-    public int getMinChainWeightOption() { return opts.getInt(68); }
-    public void setMinChainWeightOption( final int min_chain_weight ) { opts.putInt(68, min_chain_weight); }
-    public int getMaxChainExtendOption() { return opts.getInt(72); }
-    public void setMaxChainExtendOption( final int max_chain_extend ) { opts.putInt(72, max_chain_extend); }
-    public float getSplitFactorOption() { return opts.getFloat(76); }
-    public void setSplitFactorOption( final float split_factor ) { opts.putFloat(76, split_factor); }
-    public int getSplitWidthOption() { return opts.getInt(80); }
-    public void setSplitWidthOption( final int split_width ) { opts.putInt(80, split_width); }
-    public int getMaxSeedOccurencesOption() { return opts.getInt(84); }
-    public void setMaxSeedOccurencesOption( final int max_occ ) { opts.putInt(84, max_occ); }
-    public int getMaxChainGapOption() { return opts.getInt(88); }
-    public void setMaxChainGapOption( final int max_chain_gap ) { opts.putInt(88, max_chain_gap); }
-    public int getNThreadsOption() { return opts.getInt(92); }
-    public void setNThreadsOption( final int n_threads ) { opts.putInt(92, n_threads); }
-    public int getChunkSizeOption() { return opts.getInt(96); }
-    public void setChunkSizeOption( final int chunk_size ) { opts.putInt(96, chunk_size); }
-    public float getMaskLevelOption() { return opts.getFloat(100); }
-    public void setMaxLevelOption( final float max_level ) { opts.putFloat(100, max_level); }
-    public float getDropRatioOption() { return opts.getFloat(104); }
-    public void setDropRatioOption( final float drop_ratio ) { opts.putFloat(104, drop_ratio); }
-    public float getXADropRatio() { return opts.getFloat(108); }
-    public void setXADropRatio( final float XA_drop_ratio ) { opts.putFloat(108, XA_drop_ratio); }
-    public float getMaskLevelRedunOption() { return opts.getFloat(112); }
-    public void setMaskLevelRedunOption( final float max_level_redun ) { opts.putFloat(112, max_level_redun); }
-    public float getMapQCoefLenOption() { return opts.getFloat(116); }
-    public void setMapQCoefLenOption( final float mapQ_coef_len ) { opts.putFloat(116, mapQ_coef_len); }
-    public int getMapQCoefFacOption() { return opts.getInt(120); }
-    public void setMapQCoefFacOption( final int mapQ_coef_fac ) { opts.putInt(120, mapQ_coef_fac); }
-    public int getMaxInsOption() { return opts.getInt(124); }
-    public void setMaxInsOption( final int max_ins ) { opts.putInt(124, max_ins); }
-    public int getMaxMateSWOption() { return opts.getInt(128); }
-    public void setMaxMateSWOption( final int max_matesw ) { opts.putInt(128, max_matesw); }
-    public int getMaxXAHitsOption() { return opts.getInt(132); }
-    public void setMaxXAHitsOption( final int max_XA_hits ) { opts.putInt(132, max_XA_hits); }
-    public int getMaxXAHitsAltOption() { return opts.getInt(136); }
-    public void setMaxXAHitsAltOption( final int max_XA_hits_alt ) { opts.putInt(136, max_XA_hits_alt); }
+    public int getMinSeedLengthOption() { return getOpts().getInt(64); }
+    public void setMinSeedLengthOption( final int min_seed_len ) { getOpts().putInt(64, min_seed_len); }
+    public int getMinChainWeightOption() { return getOpts().getInt(68); }
+    public void setMinChainWeightOption( final int min_chain_weight ) { getOpts().putInt(68, min_chain_weight); }
+    public int getMaxChainExtendOption() { return getOpts().getInt(72); }
+    public void setMaxChainExtendOption( final int max_chain_extend ) { getOpts().putInt(72, max_chain_extend); }
+    public float getSplitFactorOption() { return getOpts().getFloat(76); }
+    public void setSplitFactorOption( final float split_factor ) { getOpts().putFloat(76, split_factor); }
+    public int getSplitWidthOption() { return getOpts().getInt(80); }
+    public void setSplitWidthOption( final int split_width ) { getOpts().putInt(80, split_width); }
+    public int getMaxSeedOccurencesOption() { return getOpts().getInt(84); }
+    public void setMaxSeedOccurencesOption( final int max_occ ) { getOpts().putInt(84, max_occ); }
+    public int getMaxChainGapOption() { return getOpts().getInt(88); }
+    public void setMaxChainGapOption( final int max_chain_gap ) { getOpts().putInt(88, max_chain_gap); }
+    public int getNThreadsOption() { return getOpts().getInt(92); }
+    public void setNThreadsOption( final int n_threads ) { getOpts().putInt(92, n_threads); }
+    public int getChunkSizeOption() { return getOpts().getInt(96); }
+    public void setChunkSizeOption( final int chunk_size ) { getOpts().putInt(96, chunk_size); }
+    public float getMaskLevelOption() { return getOpts().getFloat(100); }
+    public void setMaxLevelOption( final float max_level ) { getOpts().putFloat(100, max_level); }
+    public float getDropRatioOption() { return getOpts().getFloat(104); }
+    public void setDropRatioOption( final float drop_ratio ) { getOpts().putFloat(104, drop_ratio); }
+    public float getXADropRatio() { return getOpts().getFloat(108); }
+    public void setXADropRatio( final float XA_drop_ratio ) { getOpts().putFloat(108, XA_drop_ratio); }
+    public float getMaskLevelRedunOption() { return getOpts().getFloat(112); }
+    public void setMaskLevelRedunOption( final float max_level_redun ) { getOpts().putFloat(112, max_level_redun); }
+    public float getMapQCoefLenOption() { return getOpts().getFloat(116); }
+    public void setMapQCoefLenOption( final float mapQ_coef_len ) { getOpts().putFloat(116, mapQ_coef_len); }
+    public int getMapQCoefFacOption() { return getOpts().getInt(120); }
+    public void setMapQCoefFacOption( final int mapQ_coef_fac ) { getOpts().putInt(120, mapQ_coef_fac); }
+    public int getMaxInsOption() { return getOpts().getInt(124); }
+    public void setMaxInsOption( final int max_ins ) { getOpts().putInt(124, max_ins); }
+    public int getMaxMateSWOption() { return getOpts().getInt(128); }
+    public void setMaxMateSWOption( final int max_matesw ) { getOpts().putInt(128, max_matesw); }
+    public int getMaxXAHitsOption() { return getOpts().getInt(132); }
+    public void setMaxXAHitsOption( final int max_XA_hits ) { getOpts().putInt(132, max_XA_hits); }
+    public int getMaxXAHitsAltOption() { return getOpts().getInt(136); }
+    public void setMaxXAHitsAltOption( final int max_XA_hits_alt ) { getOpts().putInt(136, max_XA_hits_alt); }
     public byte[] getScoringMatrixOption() {
         final byte[] result = new byte[25];
-        opts.position(140);
-        opts.get(result);
+        final ByteBuffer tmpOpts = getOpts();
+        tmpOpts.position(140);
+        tmpOpts.get(result);
         return result; }
     public void setScoringMatrixOption( final byte[] mat ) {
-        opts.position(140);
-        opts.put(mat);
+        final ByteBuffer tmpOpts = getOpts();
+        tmpOpts.position(140);
+        tmpOpts.put(mat);
     }
+    int getExpectedOptsSize() { return 168; }
+    int getOptsSize() { return getOpts().capacity(); }
 
     public void setIntraCtgOptions() {
         setDGapOpenPenaltyOption(16);
@@ -152,6 +162,7 @@ public final class BwaMemAligner implements AutoCloseable {
      * @return A list of (possibly multiple) alignments for each input sequence.
      */
     public <T> List<List<BwaMemAlignment>> alignSeqs( final Iterable<T> iterable, final Function<T,byte[]> func ) {
+        final ByteBuffer tmpOpts = getOpts();
         index.refIndex(); // tell the index that we're doing some aligning so that it can't be closed
         final ByteBuffer alignsBuf;
         int nSequences = 0;
@@ -168,7 +179,7 @@ public final class BwaMemAligner implements AutoCloseable {
                 contigBuf.put(func.apply(ele)).put((byte) 0);
             }
             contigBuf.flip();
-            alignsBuf = index.doAlignment(contigBuf, opts);
+            alignsBuf = index.doAlignment(contigBuf, tmpOpts);
         }
         finally {
             index.deRefIndex();
@@ -277,5 +288,12 @@ public final class BwaMemAligner implements AutoCloseable {
         byte[] tagBytes = new byte[(tagLen+3)&~3];
         buffer.get(tagBytes);
         return new String(tagBytes, 0, tagLen);
+    }
+
+    private ByteBuffer getOpts() {
+        if ( opts == null ) {
+            throw new IllegalStateException("The aligner has been closed.");
+        }
+        return opts;
     }
 }
