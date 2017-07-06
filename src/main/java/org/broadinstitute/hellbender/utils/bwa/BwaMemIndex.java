@@ -38,33 +38,53 @@ public final class BwaMemIndex implements AutoCloseable {
 
     /**
      * This method creates the new, single-file bwa index image from the 5 files that the "bwa index" command produces.
+     * It throws an IllegalStateException if it is unable to create the index image.
      */
-    public static void createIndexImage( final String refName, final String indexImageFile ) {
+    public static void createIndexImage( final String referenceName, final String imageName ) {
+        if ( referenceName == null ) {
+            throw new IllegalStateException("referenceName cannot be null.");
+        }
+        if ( imageName == null ) {
+            throw new IllegalStateException("imageName cannot be null.");
+        }
         loadNativeLibrary();
-        assertNonEmptyReadable(refName+".amb");
-        assertNonEmptyReadable(refName+".ann");
-        assertNonEmptyReadable(refName+".bwt");
-        assertNonEmptyReadable(refName+".pac");
-        assertNonEmptyReadable(refName+".sa");
-        createIndexImageFile(refName, indexImageFile);
+        assertNonEmptyReadable(referenceName+".amb");
+        assertNonEmptyReadable(referenceName+".ann");
+        assertNonEmptyReadable(referenceName+".bwt");
+        assertNonEmptyReadable(referenceName+".pac");
+        assertNonEmptyReadable(referenceName+".sa");
+        String errMsg = createIndexImageFile(referenceName, imageName);
+        if ( errMsg != null ) {
+            throw new IllegalStateException(errMsg);
+        }
     }
 
     /** create an index from an image file.  use BwaMemIndex.createIndexImage to create one, as necessary. */
     public BwaMemIndex( final String indexImageFile ) {
+        this(indexImageFile, false, false);
+    }
+
+    public BwaMemIndex( final String indexImageFile, final boolean ignoreVersion, final boolean compareCRC ) {
+        if ( indexImageFile == null ) {
+            throw new IllegalStateException("indexImageFile cannot be null.");
+        }
         this.indexImageFile = indexImageFile;
         loadNativeLibrary();
         assertNonEmptyReadable(indexImageFile);
         refCount = new AtomicInteger();
-        indexAddress = openIndex(indexImageFile);
-        if ( indexAddress == 0L ) {
-            throw new IllegalStateException("Unable to open bwa-mem index "+indexImageFile);
+        final String addrOrErrorMessage = openIndex(indexImageFile, ignoreVersion, compareCRC);
+        try {
+            indexAddress = Long.parseLong(addrOrErrorMessage);
+        } catch ( NumberFormatException nfe ) {
+            throw new IllegalStateException(addrOrErrorMessage);
         }
-        ByteBuffer refContigNamesBuf = getRefContigNames(indexAddress);
+
+        final ByteBuffer refContigNamesBuf = getRefContigNames(indexAddress);
         if ( refContigNamesBuf == null ) {
             throw new IllegalStateException("Unable to retrieve reference contig names from bwa-mem index "+indexImageFile);
         }
         refContigNamesBuf.order(ByteOrder.nativeOrder()).position(0).limit(refContigNamesBuf.capacity());
-        int nRefContigNames = refContigNamesBuf.getInt();
+        final int nRefContigNames = refContigNamesBuf.getInt();
         refContigNames = new ArrayList<>(nRefContigNames);
         for ( int idx = 0; idx < nRefContigNames; ++idx ) {
             int nameLen = refContigNamesBuf.getInt();
@@ -102,7 +122,10 @@ public final class BwaMemIndex implements AutoCloseable {
                         throw new IllegalStateException("Index image "+indexImageFile+" can't be closed:  it's in use.");
                     }
                     indexAddress = 0L;
-                    destroyIndex(indexAddress);
+                    final String errMsg = destroyIndex(indexAddress);
+                    if ( errMsg != null ) {
+                        throw new IllegalStateException(indexImageFile+" "+errMsg);
+                    }
                 }
             }
         }
@@ -185,9 +208,9 @@ public final class BwaMemIndex implements AutoCloseable {
         }
     }
 
-    private static native boolean createIndexImageFile( String referenceName, String imageName );
-    private static native long openIndex( String indexImageFile );
-    private static native int destroyIndex( long indexAddress );
+    private static native String createIndexImageFile( String referenceName, String imageName );
+    private static native String openIndex( String imageName, boolean ignoreVersion, boolean compareCRC );
+    private static native String destroyIndex( long indexAddress );
     static native ByteBuffer createDefaultOptions();
     private static native ByteBuffer getRefContigNames( long indexAddress );
     private static native ByteBuffer createAlignments( ByteBuffer seqs, long indexAddress, ByteBuffer opts );
