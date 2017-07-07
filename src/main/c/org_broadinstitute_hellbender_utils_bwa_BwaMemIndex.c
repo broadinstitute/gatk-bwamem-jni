@@ -119,7 +119,9 @@ Java_org_broadinstitute_hellbender_utils_bwa_BwaMemIndex_createAlignments(
                 JNIEnv* env, jclass cls, jobject seqsBuf, jlong idxAddr, jobject optsBuf ) {
     bwaidx_t* pIdx = (bwaidx_t*)idxAddr;
     mem_opt_t* pOpts = (*env)->GetDirectBufferAddress(env, optsBuf);
+    if ( !pOpts ) return 0;
     char* pSeq = (*env)->GetDirectBufferAddress(env, seqsBuf);
+    if ( !pSeq ) return 0;
     size_t bufSize = 0;
     void* bufMem = jnibwa_createAlignments(pIdx, pOpts, pSeq, &bufSize);
     jobject alnBuf = (*env)->NewDirectByteBuffer(env, bufMem, bufSize);

@@ -99,12 +99,12 @@ public final class BwaMemIndex implements AutoCloseable {
     public boolean isOpen() { return indexAddress != 0L; }
 
     /** there's someone using the index -- don't allow it to be closed */
-    public long refIndex() {
+    public void refIndex() {
         refCount.incrementAndGet();
-        if ( indexAddress == 0L ) {
-            throw new IllegalStateException("Index image " + indexImageFile + " has been closed");
+        final long addr = indexAddress;
+        if ( addr == 0L ) {
+            throw new IllegalStateException("Index image " + indexImageFile + " has been closed.");
         }
-        return indexAddress;
     }
 
     /** done using the index -- if ref count has fallen to 0, a call to close can be expected to succeed */
@@ -143,7 +143,11 @@ public final class BwaMemIndex implements AutoCloseable {
     }
 
     ByteBuffer doAlignment( final ByteBuffer seqs, final ByteBuffer opts ) {
-        final ByteBuffer alignments = createAlignments(seqs, indexAddress, opts);
+        final long addr = indexAddress;
+        if ( addr == 0L ) {
+            throw new IllegalStateException("Index image " + indexImageFile + " has been closed.");
+        }
+        final ByteBuffer alignments = createAlignments(seqs, addr, opts);
         if ( alignments == null ) {
             throw new IllegalStateException("Unable to get alignments from bwa-mem index "+indexImageFile+": We don't know why.");
         }

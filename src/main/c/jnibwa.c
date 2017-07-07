@@ -87,35 +87,41 @@ static void fmt_BAMish(mem_opt_t const* opt, bntseq_t const* bns, kstring_t *str
     }
 }
 
+// the function above, fmt_BAMish, builds a binary "string" with several variable-length pieces.
+// the problem is that the string can include null bytes, so it isn't really a string, and it isn't null terminated.
+// this function must be kept carefully in sync with that code -- it figures out the length of what was written,
+// jumping around to find out how long the variable-length pieces are.
 static size_t bufLen( int32_t* pBuf ) {
     size_t totLen = 1;
     size_t nAligns = *pBuf++;
     while ( nAligns-- ) {
         int32_t flag = *pBuf++ >> 16;
         totLen += 1; // for flags
-        if ( !(flag & 0x4) ) {
-            totLen += 8; // refId, pos, NM, AS, XS, nCigOps, nMDchars, nXAchars
+        if ( !(flag & 0x4) ) { // if the read is not unmapped
+            totLen += 8; // we wrote refId, pos, NM, AS, XS, nCigOps, nMDchars, nXAchars
             pBuf += 5;
             int32_t nCig = *pBuf++;
-            totLen += nCig;
+            totLen += nCig; // and this many cigar ops
             pBuf += nCig;
-            int32_t nMD = (*pBuf++ + 3) >> 2;
+            int32_t nMD = (*pBuf++ + 3) >> 2; // and an MD string (with length rounded up to an integer boundary)
             totLen += nMD;
             pBuf += nMD;
-            int32_t nXA = (*pBuf++ + 3) >> 2;
+            int32_t nXA = (*pBuf++ + 3) >> 2; // and an XA string (ditto)
             totLen += nXA;
             pBuf += nXA;
         }
-        if ( (flag & 0x9) == 1 ) {
-            totLen += 3; // mate rid, mate pos, tlen
+        if ( (flag & 0x9) == 1 ) { // if the mate is mapped
+            totLen += 3; // we wrote mate rid, mate pos, tlen
             pBuf += 3;
         }
     }
     return totLen;
 }
 
-static char* createErrorMessage( char const* fmt, char const* name, char const* err ) {
+static char* createErrorMessage( char* fmt, char const* name, char const* err ) {
     char* buf = malloc(strlen(fmt)+(name?strlen(name):0)+(err?strlen(err):0)+1);
+    // just return the template with the %s's if we can't get memory to format the error message
+    if ( !buf ) return fmt;
     sprintf(buf, fmt, name, err);
     return buf;
 }
