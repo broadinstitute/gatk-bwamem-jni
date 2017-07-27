@@ -1,16 +1,13 @@
 package org.broadinstitute.hellbender.utils.bwa;
 
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.IOException;
-import java.io.InputStream;
+import java.io.*;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 
 /**
  * BwaMemIndex manages the mapping of a bwa index image file into (non-Java) memory.
@@ -30,38 +27,272 @@ import java.util.concurrent.atomic.AtomicInteger;
  * if that's what you want to do.
  */
 public final class BwaMemIndex implements AutoCloseable {
+
+    private static final int MAXIMUM_NUMBER_OF_CHARACTER_BEFORE_FIRST_HEADER_IN_FASTA_FILES =  4092;
+    private static final char FASTA_HEADER_PREFIX_CHAR = '>';
+
+    public static final List<String> INDEX_FILE_EXTENSIONS =
+            Collections.unmodifiableList(Arrays.asList(
+                    ".amb", ".ann", ".bwt", ".pac", ".sa" ));
+
+    public static final String IMAGE_FILE_EXTENSION = ".img";
+
+    public static final List<String> FASTA_FILE_EXTENSIONS =
+            Collections.unmodifiableList(Arrays.asList(".fasta", ".fa"));
+
+    /**
+     * Indexing algorithms supported by Bwa.
+     */
+    public enum Algorithm {
+
+        /**
+         * Chooses the most appropriate algorithm based on characteristic
+         * of the reference. For references shorter than 2Gbases it will use {@link #IS}
+         * whereas for larger reference it will employ {@link #RB2}.
+         */
+        AUTO,
+
+        /**
+          * Linear-time algorithm for constructing suffix array.
+          * It requires 5.37N memory where N is the size of the database.
+          * IS is moderately fast, but does not work with database larger than 2GB.
+          * IS is the default algorithm due to its simplicity. The current codes for
+          * IS algorithm are reimplemented by Yuta Mori.
+          *
+          * @see "http://bio-bwa.sourceforge.net/bwa.shtml"
+          */
+        IS,
+
+        /**
+         * The <i>Ropebwt2</i> algorithm.
+         *
+         * @see "https://arxiv.org/pdf/1406.0426.pdf"
+         */
+        RB2;
+        /**
+         * The string name use by the Bwa command line to denote that algorithm.
+         * @return never {@code null} and unique across algorithms.
+         */
+        public String toBwaName() {
+            return this.toString().toLowerCase();
+        }
+    }
+
     private final String indexImageFile; // stash this for error messages
     private volatile long indexAddress; // address where the index was memory-mapped (for use by C code)
     private final AtomicInteger refCount; // keep track of how many threads are actively aligning
     private final List<String> refContigNames; // the reference dictionary from the index
     private static volatile boolean nativeLibLoaded = false; // whether we've loaded the native library or not
 
-    /**
-     * This method creates the new, single-file bwa index image from the 5 files that the "bwa index" command produces.
-     */
-    public static void createIndexImage( final String refName, final String indexImageFile ) {
-        loadNativeLibrary();
-        assertNonEmptyReadable(refName+".amb");
-        assertNonEmptyReadable(refName+".ann");
-        assertNonEmptyReadable(refName+".bwt");
-        assertNonEmptyReadable(refName+".pac");
-        assertNonEmptyReadable(refName+".sa");
-        createIndexImageFile(refName, indexImageFile);
+    public static void createIndexImageFromFastaFile(final String fasta) {
+        if (fasta == null) {
+            throw new IllegalArgumentException("the input fasta file name cannot be null");
+        } else {
+            final String extension = resolveFastaFileExtension(fasta);
+            final String prefix = fasta.substring(0, fasta.length() - extension.length());
+            final String imageFile = prefix + IMAGE_FILE_EXTENSION;
+            createIndexImageFromFastaFile(fasta, imageFile);
+        }
     }
 
-    /** create an index from an image file.  use BwaMemIndex.createIndexImage to create one, as necessary. */
+    private static String resolveFastaFileExtension(final String fasta) {
+        final Optional<String> extension = FASTA_FILE_EXTENSIONS.stream()
+                .filter(fasta::endsWith).findFirst();
+        if (!extension.isPresent()) {
+            throw new IllegalArgumentException(
+                    String.format("the fasta file provided '%s' does not have an standard fasta extensions: %s",
+                            fasta, FASTA_FILE_EXTENSIONS.stream().collect(Collectors.joining(", "))));
+        } else {
+            return extension.get();
+        }
+    }
+
+    /**
+     * Create the index image file for a complete set of BWA index files
+     * @param indexPrefix the location of the index files.
+     * @param imageFile the location of the new index image file.
+     *
+     * <p>
+     *     <b><i>WARNING!</i></b>: Notice that currently this method is making JNI call that might result in an abrupt process
+     *     interruption (e.g. exit or abort system call) and so the control may never be returned.
+     * </p>
+     *
+     * @throws IllegalArgumentException if {@code indexPrefix} is {@code null}
+     *  or it does not look like it points to a complete set of index files.
+     * @throws IllegalArgumentException if {@code imageFile} is {@code null}.
+     */
+    public static void createIndexImageFromIndexFiles(final String indexPrefix, final String imageFile) {
+        if (indexPrefix == null) {
+            throw new IllegalArgumentException("the index prefix cannot be null");
+        } else if (imageFile == null) {
+            throw new IllegalArgumentException("the image file cannot be null");
+        }
+        assertLooksLikeIndexPrefix(indexPrefix);
+        loadNativeLibrary();
+        createIndexImageFile(indexPrefix, imageFile);
+    }
+
+    /**
+     * Creates the index image file for a reference fasta file.
+     * <p>
+     *     The index will be created using the default algorithm {@link Algorithm#AUTO}.
+     * </p>
+     *
+     * <p>
+     *     <b><i>WARNING!</i></b>: Notice that currently this method is making JNI call that might result in an abrupt process
+     *     interruption (e.g. exit or abort system call) and so the control may never be returned.
+     * </p>
+     * @param fasta the location of the targeted reference.
+     * @param imageFile the location of the new index image file.
+     * @throws IllegalArgumentException if {@code fasta} is {@code null}
+     *  or it does not look like it points to a fasta formatted readable file.
+     * @throws IllegalArgumentException if {@code imageFile} is {@code null}.
+     */
+    public static void createIndexImageFromFastaFile(final String fasta, final String imageFile) {
+        createIndexImageFromFastaFile(fasta, imageFile, Algorithm.AUTO);
+    }
+
+    /**
+     * Creates the index image file for a reference fasta file.
+     *
+     * @param fasta the location of the targeted reference.
+     * @param imageFile the location of the new index image file.
+     * @param algo the alogirthm to use to create the index.
+     *
+     * <p>
+     *     <b><i>WARNING!</i></b>: Notice that currently this method is making JNI call that might result in an abrupt process
+     *     interruption (e.g. exit or abort system call) and so the control may never be returned.
+     * </p>
+     *
+     * @throws IllegalArgumentException if any of {@code fasta} or {@code imageFile} is {@code null}.
+     *  or it does not look like it points to a fasta formatted readable file.
+     * @throws CouldNotReadReferenceException if it doesn't seem to be possible
+     *  to read reference from the provided fasta file name.
+     *
+     * @throws CouldNotCreateIndexImageException if it doesn't seem to be possible
+     *  to create or the image file.
+     */
+    public static void createIndexImageFromFastaFile( final String fasta, final String imageFile, final Algorithm algo) {
+        assertLooksLikeFastaFile(fasta);
+        assertCanCreateOrOverwriteImageFile(imageFile);
+        if (algo == null) {
+            throw new IllegalArgumentException("the input algorithm must not be null");
+        }
+
+        final File indexPrefix = createTempIndexPrefix(fasta);
+        loadNativeLibrary();
+        createReferenceIndex(fasta, indexPrefix.getPath(), algo.toBwaName());
+        createIndexImageFile(indexPrefix.getPath(), imageFile);
+        deleteIndexFiles(indexPrefix);
+    }
+
+    private static void assertCanCreateOrOverwriteImageFile(final String imageFile) {
+        if (imageFile == null) {
+            throw new IllegalArgumentException("the image file cannot be null");
+        } else {
+            final File file = new File(imageFile);
+            try {
+                if (!file.createNewFile()) {
+                    if (!file.isFile() || !file.canWrite()) {
+                        throw new CouldNotCreateIndexImageException(imageFile, "already exists as a non-regular or unwritable file");
+                    }
+                } else {
+                    file.delete();
+                }
+            } catch (final IOException ex) {
+                throw new CouldNotCreateIndexImageException(imageFile, ex.getMessage(), ex);
+            }
+        }
+    }
+
+    /**
+     * Checks whether the input index prefix seems to point to a complete set
+     * of readable index files.
+     *
+     * @param indexPrefix the target index prefix.
+     * @throws IllegalArgumentException if that is not the case.
+     */
+    private static void assertLooksLikeIndexPrefix(final String indexPrefix) {
+        if (indexPrefix == null) {
+            throw new IllegalArgumentException("the input index prefix cannot be null");
+        }
+        INDEX_FILE_EXTENSIONS.stream()
+                .map(ext -> indexPrefix + ext)
+                .forEach(file -> assertNonEmptyReadableIndexFile(indexPrefix, file));
+    }
+
+    private static void deleteIndexFiles(final File indexPrefix) {
+        INDEX_FILE_EXTENSIONS.stream()
+                .map(ext -> new File(indexPrefix + ext))
+                .forEach(File::delete);
+        indexPrefix.delete();
+    }
+
+    private static File createTempIndexPrefix(final String fasta) {
+        final File indexPrefix;
+        try {
+            indexPrefix = File.createTempFile("temporal-index","");
+        } catch (final IOException ex) {
+            throw new CouldNotCreateIndexException(fasta, "no-location","failure to create a temporal file");
+        }
+        indexPrefix.deleteOnExit();
+        INDEX_FILE_EXTENSIONS.stream()
+                .map(ext -> new File(indexPrefix + ext))
+                .forEach(File::deleteOnExit);
+        return indexPrefix;
+    }
+
+    private static void assertLooksLikeFastaFile(final String fasta) {
+        resolveFastaFileExtension(fasta);
+        if (!nonEmptyReadableFile(fasta)) {
+            throw new CouldNotReadReferenceException(fasta, "input file unreachable or not a file");
+        }
+        try (final BufferedReader reader = new BufferedReader(new FileReader(fasta))) {
+            int c;
+            int offset = 0;
+            while (offset++ < MAXIMUM_NUMBER_OF_CHARACTER_BEFORE_FIRST_HEADER_IN_FASTA_FILES && (c = reader.read()) != -1) {
+                if (!Character.isSpaceChar(c)) {
+                    if (c == FASTA_HEADER_PREFIX_CHAR) {
+                        break;
+                    } else {
+                        throw new InvalidFileFormatException(fasta, "the file provided does not seem to be a fasta file (first non-space character in the first 4K is not '" + FASTA_HEADER_PREFIX_CHAR + "'");
+                    }
+                }
+            }
+
+        } catch (final IOException ex) {
+            throw new IllegalArgumentException("problems reading the content of the input file '" + fasta + "'", ex);
+        }
+    }
+
+    /**
+     * Loads an index from an image file.
+     * <p>
+     *     You can use other methods to create such
+     *     indexes from fasta reference ({@link #createIndexImageFromFastaFile} or their index files
+     *     ({@link #createIndexImageFromIndexFiles}).
+     * </p>
+     * <p>
+     *     <b><i>WARNING!</i></b>: Notice that currently this method is making JNI call that might result in an abrupt process
+     *     interruption (e.g. exit or abort system call) and so the control may never be returned.
+     * </p>
+     *
+     * @throws IllegalArgumentException if {@code indexImageFile} is {@code null}.
+     * @throws CouldNotReadImageException if some problem occurred when loading the
+     *  image file.
+     */
     public BwaMemIndex( final String indexImageFile ) {
         this.indexImageFile = indexImageFile;
         loadNativeLibrary();
-        assertNonEmptyReadable(indexImageFile);
+        assertNonEmptyReadableImageFile(indexImageFile);
         refCount = new AtomicInteger();
         indexAddress = openIndex(indexImageFile);
         if ( indexAddress == 0L ) {
-            throw new IllegalStateException("Unable to open bwa-mem index "+indexImageFile);
+            throw new CouldNotReadImageException(indexImageFile, "unable to open bwa-mem index");
         }
         ByteBuffer refContigNamesBuf = getRefContigNames(indexAddress);
         if ( refContigNamesBuf == null ) {
-            throw new IllegalStateException("Unable to retrieve reference contig names from bwa-mem index "+indexImageFile);
+            throw new CouldNotReadImageException("unable to retrieve reference contig names from bwa-mem index");
         }
         refContigNamesBuf.order(ByteOrder.nativeOrder()).position(0).limit(refContigNamesBuf.capacity());
         int nRefContigNames = refContigNamesBuf.getInt();
@@ -73,6 +304,12 @@ public final class BwaMemIndex implements AutoCloseable {
             refContigNames.add(new String(nameBytes));
         }
         destroyByteBuffer(refContigNamesBuf);
+    }
+
+    private void assertNonEmptyReadableImageFile(final String image) {
+        if (!nonEmptyReadableFile(image)) {
+            throw new CouldNotReadImageException(image, "is empty or is not readable");
+        }
     }
 
     /** true if index has not been closed */
@@ -90,7 +327,14 @@ public final class BwaMemIndex implements AutoCloseable {
     /** done using the index -- if ref count has fallen to 0, a call to close can be expected to succeed */
     public void deRefIndex() { refCount.decrementAndGet(); }
 
-    /** close the index and release the (non-Java) memory that's been allocated */
+    /**
+     * Close the index and release the (non-Java) memory that's been allocated
+     *
+     * <p>
+     *     <b><i>WARNING!</i></b>: Notice that currently this method is making JNI call that might result in an abrupt process
+     *     interruption (e.g. exit or abort system call) and so the control may never be returned.
+     * </p>
+     */
     @Override
     public void close() {
         long addr = indexAddress;
@@ -127,12 +371,15 @@ public final class BwaMemIndex implements AutoCloseable {
         return alignments;
     }
 
-    private static void assertNonEmptyReadable( final String fileName ) {
+    private static void assertNonEmptyReadableIndexFile(final String index, final String fileName ) {
         if ( !nonEmptyReadableFile(fileName) )
-            throw new IllegalArgumentException("Missing bwa index file: "+fileName);
+            throw new CouldNotReadIndexException(index, "Missing bwa index file: "+ fileName);
     }
 
     private static boolean nonEmptyReadableFile( final String fileName ) {
+        if (fileName == null) {
+            throw new IllegalArgumentException("the input file name cannot be null");
+        }
         try ( final FileInputStream is = new FileInputStream(fileName) ) {
             return is.read() != -1;
         } catch ( final IOException ioe ) {
@@ -185,7 +432,8 @@ public final class BwaMemIndex implements AutoCloseable {
         }
     }
 
-    private static native boolean createIndexImageFile( String referenceName, String imageName );
+    private static native boolean createReferenceIndex(String referenceName, String indexPrefix, String algorithmName);
+    private static native boolean createIndexImageFile(String indexPrefix, String imageName );
     private static native long openIndex( String indexImageFile );
     private static native int destroyIndex( long indexAddress );
     static native ByteBuffer createDefaultOptions();

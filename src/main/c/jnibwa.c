@@ -2,15 +2,26 @@
  * jnibwa.c
  */
 
+#include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
+#include <time.h>
+#include <unistd.h>
+#include <zlib.h>
 #include <errno.h>
+
 #include "jnibwa.h"
 #include "bwa/kstring.h"
+#include "bwa/bntseq.h"
+#include "bwa/bwt.h"
+#include "bwa/utils.h"
+#include "bwa/rle.h"
+#include "bwa/rope.h"
+
 
 static inline void kput32( int32_t val, kstring_t* str ) {
 	kputsn((char*)&val, sizeof(int32_t), str);

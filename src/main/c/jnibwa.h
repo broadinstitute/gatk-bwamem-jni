@@ -7,6 +7,8 @@
 
 #include "bwa/bwamem.h"
 
+
+int jnibwa_createReferenceIndex( char const* refFileName, char const* indexPrefix, char const* algoName);
 int jnibwa_createIndexFile( char const* refName, char const* imgSuffix );
 bwaidx_t* jnibwa_openIndex( int fd );
 int jnibwa_destroyIndex( bwaidx_t* pIdx );

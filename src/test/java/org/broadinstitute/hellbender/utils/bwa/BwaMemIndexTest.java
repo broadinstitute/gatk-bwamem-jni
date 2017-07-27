@@ -1,24 +1,34 @@
 package org.broadinstitute.hellbender.utils.bwa;
 
 import org.testng.Assert;
+import org.testng.Reporter;
 import org.testng.annotations.AfterClass;
 import org.testng.annotations.BeforeClass;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import java.util.Random;
+import java.util.*;
+import java.util.stream.Stream;
 
 @Test
 public final class BwaMemIndexTest {
     private static BwaMemIndex index;
 
+    private static final String[] INDEX_EXTENSIONS = {".amb", ".ann", ".bwt", ".pac", ".sa" };
+
     @BeforeClass
     void openIndex() {
         final String indexImageFile = "src/test/resources/ref.fa.img";
         new File(indexImageFile).deleteOnExit();
-        BwaMemIndex.createIndexImage("src/test/resources/ref.fa", indexImageFile );
+        BwaMemIndex.createIndexImageFromIndexFiles("src/test/resources/ref.fa", indexImageFile );
         index = new BwaMemIndex(indexImageFile);
     }
 
@@ -108,5 +118,73 @@ public final class BwaMemIndexTest {
         Assert.assertEquals(alignment.getNMismatches(), nMismatches);
         Assert.assertEquals(alignment.getRefId(), 0);
         Assert.assertEquals(alignment.getSamFlag(), samFlag);
+    }
+
+    @Test(dataProvider = "algorithmsData")
+    void testIndexReference(final BwaMemIndex.Algorithm alg) throws IOException, IOException {
+        final char[] refSeq1 = new char[45212];
+        final char[] refSeq2 = new char[13415];
+        final char[] nucletotides = new char[] { 'A', 'C', 'G', 'T'};
+        final Random rdn = new Random(13);
+        for (int i = 0; i < refSeq1.length; i++) {
+            refSeq1[i] = nucletotides[rdn.nextInt(nucletotides.length)];
+        }
+        for (int i = 0; i < refSeq2.length; i++) {
+            refSeq2[i] = nucletotides[rdn.nextInt(nucletotides.length)];
+        }
+
+        final File fastaFile = File.createTempFile("test", ".fasta");
+        //fastaFile.deleteOnExit();
+
+        final int basesPerLine = 60;
+        try (final PrintWriter fastaWriter = new PrintWriter(new FileWriter(fastaFile))) {
+            fastaWriter.println(">seq1");
+            for (int i = 0; i < refSeq1.length; i += basesPerLine) {
+                fastaWriter.println(new String(refSeq1, i, Math.min(basesPerLine, refSeq1.length - i)));
+            }
+            fastaWriter.println(">seq2");
+            for (int i = 0; i < refSeq2.length; i += basesPerLine) {
+                fastaWriter.println(new String(refSeq2, i, Math.min(basesPerLine, refSeq2.length - i)));
+            }
+        }
+        final File imageFile = new File(fastaFile.getPath() + ".idx");
+        imageFile.deleteOnExit();
+        BwaMemIndex.createIndexImageFromFastaFile(fastaFile.getPath(), imageFile.getPath());
+        final BwaMemIndex index = new BwaMemIndex(imageFile.getPath()  );
+        Assert.assertEquals(index.getReferenceContigNames(), Arrays.asList("seq1", "seq2"));
+        index.close();
+        fastaFile.delete();
+        imageFile.delete();
+    }
+
+    private static void deleteOnExit(final String prefix) {
+        Stream.of(INDEX_EXTENSIONS)
+                .map(ext -> prefix + ext)
+                .map(File::new)
+                .forEach(File::deleteOnExit);
+    }
+    private static void delete(final String prefix) {
+        Stream.of(INDEX_EXTENSIONS)
+                .map(ext -> prefix + ext)
+                .map(File::new)
+                .forEach(File::deleteOnExit);
+    }
+
+    private static void assertNonEmptyReadableIndexFiles(final String prefix) {
+        Stream.of(INDEX_EXTENSIONS)
+                .map(ext -> prefix + ext)
+                .map(File::new)
+                .forEach(f -> {
+                    Assert.assertTrue(f.exists());
+                    Assert.assertTrue(f.isFile());
+                    Assert.assertTrue(f.canRead());
+                    Assert.assertTrue(f.length() > 0);
+                });
+    }
+
+    @DataProvider(name = "algorithmsData")
+    Object[][] algorithmsData() {
+        return Stream.of(BwaMemIndex.Algorithm.values())
+                .map(a -> new Object[] { a }).toArray(Object[][]::new);
     }
 }
