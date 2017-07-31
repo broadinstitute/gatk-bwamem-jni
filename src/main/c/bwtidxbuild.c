@@ -5,6 +5,7 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
+// Commented out as no needed unless we debug elapse time (which is itself commented out).
 //#include <time.h>
 #include <unistd.h>
 #include <zlib.h>
@@ -19,6 +20,13 @@
 
 int bwt_idx_build(const char *fasta, const char *prefix, const char *algo_type_str);
 
+// This code is copy&paste&skimming of bwtindex.c bwa_index(int,char**)
+// We copied it here to avoid parameter parsing which is amonst other thing non-thread
+// safe (uses global variables).
+//
+// In a more up-to-date version in bwa main branch the bwt_idx_build method is exported by libbwa
+// and that would be the natural choice. However in the Apache2 branch that is not
+// available yet, so we need to do this hack.
 int bwt_idx_build(const char *fasta, const char *prefix, const char *algo_type_str)
 {
 	extern void bwa_pac_rev_core(const char *fn, const char *fn_rev);

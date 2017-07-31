@@ -5,7 +5,7 @@
 #include "bwa/bwa_commit.h"
 
 
-char * jstring_to_const_char(JNIEnv* env, jstring in) {
+char * jstring_to_chars(JNIEnv* env, jstring in) {
     const char* tmp = (*env)->GetStringUTFChars(env, in, 0);
     char* res = strdup(tmp);
     (*env)->ReleaseStringUTFChars(env, in, tmp);
@@ -18,9 +18,9 @@ Java_org_broadinstitute_hellbender_utils_bwa_BwaMemIndex_createReferenceIndex( J
 
     extern int bwt_idx_build(const char*, const char*, const char*);
 
-	char *referenceFileName = jstring_to_const_char(env, jReferenceFileName);
-	char *indexPrefix = jstring_to_const_char(env, jIndexPrefix);
-	char *algoName = jstring_to_const_char(env, jAlgoName);
+	char *referenceFileName = jstring_to_chars(env, jReferenceFileName);
+	char *indexPrefix = jstring_to_chars(env, jIndexPrefix);
+	char *algoName = jstring_to_chars(env, jAlgoName);
 	jboolean res = !bwt_idx_build( referenceFileName, indexPrefix, algoName);
 	free(referenceFileName); free(indexPrefix); free(algoName);
 	return res;
@@ -28,8 +28,8 @@ Java_org_broadinstitute_hellbender_utils_bwa_BwaMemIndex_createReferenceIndex( J
 
 JNIEXPORT jboolean JNICALL
 Java_org_broadinstitute_hellbender_utils_bwa_BwaMemIndex_createIndexImageFile( JNIEnv* env, jclass cls, jstring referencePrefix, jstring imageFileName ) {
-	char *refName = jstring_to_const_char(env, referencePrefix);
-	char *imgName = jstring_to_const_char(env, imageFileName);
+	char *refName = jstring_to_chars(env, referencePrefix);
+	char *imgName = jstring_to_chars(env, imageFileName);
 	jboolean res = !jnibwa_createIndexFile( refName, imgName );
 	free(refName); free(imgName);
 	return res;
@@ -37,7 +37,7 @@ Java_org_broadinstitute_hellbender_utils_bwa_BwaMemIndex_createIndexImageFile( J
 
 JNIEXPORT jlong JNICALL
 Java_org_broadinstitute_hellbender_utils_bwa_BwaMemIndex_openIndex( JNIEnv* env, jclass cls, jstring memImgFilename ) {
-	char *fname = jstring_to_const_char(env, memImgFilename);
+	char *fname = jstring_to_chars(env, memImgFilename);
 	int fd = open(fname, O_RDONLY);
 	free(fname);
 	if ( fd == -1 ) return 0;

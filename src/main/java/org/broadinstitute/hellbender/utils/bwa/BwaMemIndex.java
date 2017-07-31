@@ -69,6 +69,7 @@ public final class BwaMemIndex implements AutoCloseable {
          * @see "https://arxiv.org/pdf/1406.0426.pdf"
          */
         RB2;
+
         /**
          * The string name use by the Bwa command line to denote that algorithm.
          * @return never {@code null} and unique across algorithms.
