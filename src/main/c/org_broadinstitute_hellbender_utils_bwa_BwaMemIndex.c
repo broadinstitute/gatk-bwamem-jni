@@ -4,22 +4,42 @@
 #include "jnibwa.h"
 #include "bwa/bwa_commit.h"
 
+
+char * jstring_to_chars(JNIEnv* env, jstring in) {
+    const char* tmp = (*env)->GetStringUTFChars(env, in, 0);
+    char* res = strdup(tmp);
+    (*env)->ReleaseStringUTFChars(env, in, tmp);
+    return res;
+}
+
+
+JNIEXPORT jboolean JNICALL
+Java_org_broadinstitute_hellbender_utils_bwa_BwaMemIndex_createReferenceIndex( JNIEnv* env, jclass cls, jstring jReferenceFileName, jstring jIndexPrefix, jstring jAlgoName) {
+
+    extern int bwt_idx_build(const char*, const char*, const char*);
+
+	char *referenceFileName = jstring_to_chars(env, jReferenceFileName);
+	char *indexPrefix = jstring_to_chars(env, jIndexPrefix);
+	char *algoName = jstring_to_chars(env, jAlgoName);
+	jboolean res = !bwt_idx_build( referenceFileName, indexPrefix, algoName);
+	free(referenceFileName); free(indexPrefix); free(algoName);
+	return res;
+}
+
 JNIEXPORT jboolean JNICALL
 Java_org_broadinstitute_hellbender_utils_bwa_BwaMemIndex_createIndexImageFile( JNIEnv* env, jclass cls, jstring referencePrefix, jstring imageFileName ) {
-	char const* referencePrefixChars = (*env)->GetStringUTFChars(env, referencePrefix, 0);
-	char const* refName = strdup(referencePrefixChars);
-	(*env)->ReleaseStringUTFChars(env, referencePrefix, referencePrefixChars);
-	char const* imageFileNameChars = (*env)->GetStringUTFChars(env, imageFileName, 0);
-	char const* imgName = strdup(imageFileNameChars);
-	(*env)->ReleaseStringUTFChars(env, imageFileName, imageFileNameChars);
-	return !jnibwa_createIndexFile( refName, imgName );
+	char *refName = jstring_to_chars(env, referencePrefix);
+	char *imgName = jstring_to_chars(env, imageFileName);
+	jboolean res = !jnibwa_createIndexFile( refName, imgName );
+	free(refName); free(imgName);
+	return res;
 }
 
 JNIEXPORT jlong JNICALL
 Java_org_broadinstitute_hellbender_utils_bwa_BwaMemIndex_openIndex( JNIEnv* env, jclass cls, jstring memImgFilename ) {
-	char const* fname = (*env)->GetStringUTFChars(env, memImgFilename, 0);
+	char *fname = jstring_to_chars(env, memImgFilename);
 	int fd = open(fname, O_RDONLY);
-	(*env)->ReleaseStringUTFChars(env, memImgFilename, fname);
+	free(fname);
 	if ( fd == -1 ) return 0;
 	return (jlong)jnibwa_openIndex(fd);
 }
