@@ -85,23 +85,12 @@ public final class BwaMemIndex implements AutoCloseable {
     private final List<String> refContigNames; // the reference dictionary from the index
     private static volatile boolean nativeLibLoaded = false; // whether we've loaded the native library or not
 
-    public static void createIndexImageFromFastaFile(final String fasta) {
-        if (fasta == null) {
-            throw new IllegalArgumentException("the input fasta file name cannot be null");
-        } else {
-            final String extension = resolveFastaFileExtension(fasta);
-            final String prefix = fasta.substring(0, fasta.length() - extension.length());
-            final String imageFile = prefix + IMAGE_FILE_EXTENSION;
-            createIndexImageFromFastaFile(fasta, imageFile);
-        }
-    }
-
     private static String resolveFastaFileExtension(final String fasta) {
         final Optional<String> extension = FASTA_FILE_EXTENSIONS.stream()
                 .filter(fasta::endsWith).findFirst();
         if (!extension.isPresent()) {
             throw new IllegalArgumentException(
-                    String.format("the fasta file provided '%s' does not have an standard fasta extensions: %s",
+                    String.format("the fasta file provided '%s' does not have any of the standard fasta extensions: %s",
                             fasta, FASTA_FILE_EXTENSIONS.stream().collect(Collectors.joining(", "))));
         } else {
             return extension.get();
@@ -134,11 +123,43 @@ public final class BwaMemIndex implements AutoCloseable {
     }
 
     /**
+     * Create the index image file for a fasta file.
+     * <p>The name of the output index file will be determined by the name of the fasta file;
+     * it substitutes its extension (typically <i>.fasta</i> or <i>.fas</i>) by <i>.img</i>.</p>
+     *
+     * <p>
+     *     This is equivalent to calling
+     *     {@code {@link #createIndexImageFromFastaFile(String,String) createIndexImageFromFastaFile(X, X.replace("\.(fasta)|(fa)$", ".img"))}}
+     * </p>
+     * <p>
+     *     <b><i>WARNING!</i></b>: Notice that currently this method is making JNI call that might result in an abrupt process
+     *     interruption (e.g. exit or abort system call) and so the control may never be returned.
+     * </p>
+     *
+     * @param fasta the location of the fasta reference file.
+     * @throws IllegalArgumentException if {@code fasta} is {@code null} or
+     *  does not finish with out of the standard fasta extension names (listed in {@link #FASTA_FILE_EXTENSIONS}).
+     * @throws InvalidFileFormatException if {@code fasta} does not seem to be a fasta formatted regular readable file.
+     * @throws CouldNotCreateIndexImageException if for some reason we could not create the index file.
+     */
+    public static void createIndexImageFromFastaFile(final String fasta) {
+        if (fasta == null) {
+            throw new IllegalArgumentException("the input fasta file name cannot be null");
+        } else {
+            final String extension = resolveFastaFileExtension(fasta);
+            final String prefix = fasta.substring(0, fasta.length() - extension.length());
+            final String imageFile = prefix + IMAGE_FILE_EXTENSION;
+            createIndexImageFromFastaFile(fasta, imageFile);
+        }
+    }
+
+    /**
      * Creates the index image file for a reference fasta file.
      * <p>
      *     The index will be created using the default algorithm {@link Algorithm#AUTO}.
      * </p>
-     *
+     * <p>
+     *     Calling this method is equivalent to calling {@link #createIndexImageFromFastaFile(String, String, Algorithm) createIndexImageFromFastaFile(a, b, Algorithm.AUTO)}
      * <p>
      *     <b><i>WARNING!</i></b>: Notice that currently this method is making JNI call that might result in an abrupt process
      *     interruption (e.g. exit or abort system call) and so the control may never be returned.
@@ -148,6 +169,12 @@ public final class BwaMemIndex implements AutoCloseable {
      * @throws IllegalArgumentException if {@code fasta} is {@code null}
      *  or it does not look like it points to a fasta formatted readable file.
      * @throws IllegalArgumentException if {@code imageFile} is {@code null}.
+     * @throws InvalidFileFormatException if {@code fasta} does not seem to be
+     * a fasta formatted regular and readable file.
+     * @throws CouldNotCreateIndexImageException if there was a problem creating
+     * the output image.
+     * @throws CouldNotCreateIndexException if there was some problem while creating
+     * the intermediary index file set.
      */
     public static void createIndexImageFromFastaFile(final String fasta, final String imageFile) {
         createIndexImageFromFastaFile(fasta, imageFile, Algorithm.AUTO);
@@ -155,23 +182,22 @@ public final class BwaMemIndex implements AutoCloseable {
 
     /**
      * Creates the index image file for a reference fasta file.
-     *
-     * @param fasta the location of the targeted reference.
-     * @param imageFile the location of the new index image file.
-     * @param algo the alogirthm to use to create the index.
-     *
      * <p>
      *     <b><i>WARNING!</i></b>: Notice that currently this method is making JNI call that might result in an abrupt process
      *     interruption (e.g. exit or abort system call) and so the control may never be returned.
      * </p>
-     *
-     * @throws IllegalArgumentException if any of {@code fasta} or {@code imageFile} is {@code null}.
+     * @param fasta the location of the targeted reference.
+     * @param imageFile the location of the new index image file.
+     * @param algo the algorithm to use to construct the index (see {@link Algorithm} to see what there is available.).
+     * @throws IllegalArgumentException if {@code fasta} is {@code null}
      *  or it does not look like it points to a fasta formatted readable file.
-     * @throws CouldNotReadReferenceException if it doesn't seem to be possible
-     *  to read reference from the provided fasta file name.
-     *
-     * @throws CouldNotCreateIndexImageException if it doesn't seem to be possible
-     *  to create or the image file.
+     * @throws IllegalArgumentException if {@code imageFile} is {@code null}.
+     * @throws InvalidFileFormatException if {@code fasta} does not seem to be
+     * a fasta formatted regular and readable file.
+     * @throws CouldNotCreateIndexImageException if there was a problem creating
+     * the output image.
+     * @throws CouldNotCreateIndexException if there was some problem while creating
+     * the intermediary index file set.
      */
     public static void createIndexImageFromFastaFile( final String fasta, final String imageFile, final Algorithm algo) {
         assertLooksLikeFastaFile(fasta);
@@ -211,7 +237,8 @@ public final class BwaMemIndex implements AutoCloseable {
      * of readable index files.
      *
      * @param indexPrefix the target index prefix.
-     * @throws IllegalArgumentException if that is not the case.
+     * @throws IllegalArgumentException if {@code indexPrefix} is {@code null}.
+     * @throws CouldNotReadIndexException if that is not the case.
      */
     private static void assertLooksLikeIndexPrefix(final String indexPrefix) {
         if (indexPrefix == null) {
@@ -262,7 +289,7 @@ public final class BwaMemIndex implements AutoCloseable {
             }
 
         } catch (final IOException ex) {
-            throw new IllegalArgumentException("problems reading the content of the input file '" + fasta + "'", ex);
+            throw new InvalidFileFormatException(fasta, "problems reading the content of the reference fasta file'", ex);
         }
     }
 
