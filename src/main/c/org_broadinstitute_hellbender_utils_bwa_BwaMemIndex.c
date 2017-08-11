@@ -12,17 +12,31 @@ char * jstring_to_chars(JNIEnv* env, jstring in) {
     return res;
 }
 
+jint throwIllegalArgumentException(JNIEnv* env, char* message) {
+   jclass iaeClass = (*env)->FindClass(env, "java/lang/IllegalArgumentException");
+   return (*env)->ThrowNew(env, iaeClass, message);
+}
 
 JNIEXPORT jboolean JNICALL
 Java_org_broadinstitute_hellbender_utils_bwa_BwaMemIndex_createReferenceIndex( JNIEnv* env, jclass cls, jstring jReferenceFileName, jstring jIndexPrefix, jstring jAlgoName) {
 
-    extern int bwt_idx_build(const char*, const char*, const char*);
+	char *reference_file_name = jstring_to_chars(env, jReferenceFileName);
+	char *index_prefix = jstring_to_chars(env, jIndexPrefix);
+	char *algo_name = jstring_to_chars(env, jAlgoName);
+	int algo_type;
+	if (strcmp(algo_name, "auto") == 0) algo_type = 0;
+	else if (strcmp(algo_name, "is") == 0) algo_type = 3;
+	else if (strcmp(algo_name, "rb2") == 0) algo_type = 1;
+	else {
+	    char* message = malloc(sizeof(char) * (strlen(algo_name) + 100));
+	    sprintf(message, "wrong algorithm name '%s'", algo_name);
+	    throwIllegalArgumentException(env, message);
+	    free(message);
+	    return 0;
+	}
+	jboolean res = !bwa_idx_build( reference_file_name, index_prefix, algo_type, -1);
+	free(reference_file_name); free(index_prefix); free(algo_name);
 
-	char *referenceFileName = jstring_to_chars(env, jReferenceFileName);
-	char *indexPrefix = jstring_to_chars(env, jIndexPrefix);
-	char *algoName = jstring_to_chars(env, jAlgoName);
-	jboolean res = !bwt_idx_build( referenceFileName, indexPrefix, algoName);
-	free(referenceFileName); free(indexPrefix); free(algoName);
 	return res;
 }
 
