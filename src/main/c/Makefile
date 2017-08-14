@@ -14,17 +14,17 @@ else
 LIB_EXT=Linux.so
 endif
 
-BWA_MEM_COMMIT=ec85a563e64710e7fc8c8c0b373d80570e245bd1
+BWA_MEM_COMMIT=cb950614ce7217788780b9a8d445c64cd4d8f62e
 JNI_BASE_NAME=org_broadinstitute_hellbender_utils_bwa_BwaMemIndex
 
 all: libbwa.$(LIB_EXT)
 
-libbwa.$(LIB_EXT): $(JNI_BASE_NAME).o jnibwa.o bwtidxbuild.o bwa/libbwa.a
+libbwa.$(LIB_EXT): $(JNI_BASE_NAME).o jnibwa.o bwa/libbwa.a
 	$(CC) -ggdb -dynamiclib -shared -o $@ $^ -lm -lz -lpthread
 
 bwa:
 	git clone https://github.com/lh3/bwa && cd bwa && git checkout $(BWA_MEM_COMMIT) && echo '#define BWA_COMMIT "'$(BWA_MEM_COMMIT)'"' > bwa_commit.h
-	sed -i .bak 's/\(LOBJS=.*\)/\1 $$(AOBJS)/g' bwa/Makefile
+	sed -i.bak -e's/\(LOBJS=.*\)/\1 bwtindex.o rle.o rope.o bwt.o is.o/g' bwa/Makefile
 
 bwa/libbwa.a: bwa
 	$(MAKE) CFLAGS="$(CFLAGS)" -C bwa libbwa.a
@@ -32,8 +32,6 @@ bwa/libbwa.a: bwa
 $(JNI_BASE_NAME).o: $(JNI_BASE_NAME).c jnibwa.h bwa
 
 jnibwa.o: jnibwa.c jnibwa.h bwa
-
-bwtidxbuild.o: bwtidxbuild.c bwa
 
 clean:
 	rm -rf bwa *.o *.$(LIB_EXT)
