@@ -25,6 +25,7 @@ To upload to maven central
 ```
 commit your changes and push your branch to github
 git tag -a -s <version>
+./gradlew clean
 scripts/build_both_dylib_and_so.sh
 ./gradlew uploadArchive -Drelease=true
 ```
