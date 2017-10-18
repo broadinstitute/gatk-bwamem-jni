@@ -374,7 +374,7 @@ public final class BwaMemIndex implements AutoCloseable {
                         throw new IllegalStateException("Index image "+indexImageFile+" can't be closed:  it's in use.");
                     }
                     indexAddress = 0L;
-                    destroyIndex(indexAddress);
+                    destroyIndex(addr);
                 }
             }
         }
