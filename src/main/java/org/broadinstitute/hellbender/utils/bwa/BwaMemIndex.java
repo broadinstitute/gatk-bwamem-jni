@@ -124,12 +124,12 @@ public final class BwaMemIndex implements AutoCloseable {
 
     /**
      * Create the index image file for a fasta file.
-     * <p>The name of the output index file will be determined by the name of the fasta file;
-     * it substitutes its extension (typically <i>.fasta</i> or <i>.fas</i>) by <i>.img</i>.</p>
+     * <p>The name of the output index file will be determined by the name of the fasta file using
+     * {@link #getDefaultIndexImageNameFromFastaFile(String)}.
      *
      * <p>
      *     This is equivalent to calling
-     *     {@code {@link #createIndexImageFromFastaFile(String,String) createIndexImageFromFastaFile(X, X.replace("\.(fasta)|(fa)$", ".img"))}}
+     *     {@code {@link #createIndexImageFromFastaFile(String,String) createIndexImageFromFastaFile(X, getDefaultIndexImageNameFromFastaFile(X)))}}
      * </p>
      * <p>
      *     <b><i>WARNING!</i></b>: Notice that currently this method is making JNI call that might result in an abrupt process
@@ -137,20 +137,36 @@ public final class BwaMemIndex implements AutoCloseable {
      * </p>
      *
      * @param fasta the location of the fasta reference file.
+     * @return location of the generated index image file (equivaled to {@link #getDefaultIndexImageNameFromFastaFile(String)}).
      * @throws IllegalArgumentException if {@code fasta} is {@code null} or
      *  does not finish with out of the standard fasta extension names (listed in {@link #FASTA_FILE_EXTENSIONS}).
      * @throws InvalidFileFormatException if {@code fasta} does not seem to be a fasta formatted regular readable file.
      * @throws CouldNotCreateIndexImageException if for some reason we could not create the index file.
+     * @see #getDefaultIndexImageNameFromFastaFile(String)
      */
-    public static void createIndexImageFromFastaFile(final String fasta) {
+    public static String createIndexImageFromFastaFile(final String fasta) {
+        final String imageFile = getDefaultIndexImageNameFromFastaFile(fasta);
+        createIndexImageFromFastaFile(fasta, imageFile);
+        return imageFile;
+    }
+
+    /**
+     * Gets the default index image name for the provided FASTA.
+     * <p>The default name is substitutes its extension (typically <i>.fasta</i> or <i>.fa</i>)
+     * by {@link #IMAGE_FILE_EXTENSION} (<i>.img</i>).</p>
+     *
+     *
+     * @param fasta the location of the fasta reference file.
+     * @throws IllegalArgumentException if {@code fasta} is {@code null} or
+     *  does not finish with out of the standard fasta extension names (listed in {@link #FASTA_FILE_EXTENSIONS}).
+     */
+    public static String getDefaultIndexImageNameFromFastaFile(final String fasta) {
         if (fasta == null) {
             throw new IllegalArgumentException("the input fasta file name cannot be null");
-        } else {
-            final String extension = resolveFastaFileExtension(fasta);
-            final String prefix = fasta.substring(0, fasta.length() - extension.length());
-            final String imageFile = prefix + IMAGE_FILE_EXTENSION;
-            createIndexImageFromFastaFile(fasta, imageFile);
         }
+        final String extension = resolveFastaFileExtension(fasta);
+        final String prefix = fasta.substring(0, fasta.length() - extension.length());
+        return prefix + IMAGE_FILE_EXTENSION;
     }
 
     /**
