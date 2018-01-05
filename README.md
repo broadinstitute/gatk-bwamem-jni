@@ -1,3 +1,6 @@
+[![Maven Central](https://maven-badges.herokuapp.com/maven-central/org.broadinstitute/gatk-bwamem-jni/badge.svg)](https://maven-badges.herokuapp.com/maven-central/org.broadinstitute/gatk-bwamem-jni)
+[![Build Status](https://travis-ci.org/broadinstitute/gatk-bwamem-jni.svg?branch=master)](https://travis-ci.org/broadinstitute/gatk-bwamem-jni)
+
 # gatk-bwamem-jni
 JNI code for bwa mem.
 
