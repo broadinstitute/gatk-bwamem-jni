@@ -17,6 +17,30 @@ jint throwIllegalArgumentException(JNIEnv* env, char* message) {
    return (*env)->ThrowNew(env, iaeClass, message);
 }
 
+int jobject_to_mem_pestat_t(JNIEnv* env, jobject in, mem_pestat_t *out) {
+   if (in == NULL) {
+     return 0;
+   }
+   memset(out, 0, sizeof(mem_pestat_t) * 4);
+   jclass pestatClass = (*env)->FindClass(env, "org/broadinstitute/hellbender/utils/bwa/BwaMemPairEndStats");
+   jfieldID failedID = (*env)->GetFieldID(env, pestatClass, "failed", "Z");
+   jfieldID lowID = (*env)->GetFieldID(env, pestatClass, "low", "I");
+   jfieldID highID = (*env)->GetFieldID(env, pestatClass, "high", "I");
+   jfieldID averageID = (*env)->GetFieldID(env, pestatClass, "average", "D");
+   jfieldID stdID = (*env)->GetFieldID(env, pestatClass, "std", "D");
+   for (int i = 0; i < 4; i++) {
+      jobject pestatObj = (*env)->GetObjectArrayElement(env, in, i);
+      out[i].failed = (int) (*env)->GetBooleanField(env, pestatObj, failedID);
+      if (!out[i].failed) {
+        out[i].low = (int) (*env)->GetIntField(env, pestatObj, lowID);
+        out[i].high = (int) (*env)->GetIntField(env, pestatObj, highID);
+        out[i].avg = (double) (*env)->GetDoubleField(env, pestatObj, averageID);
+        out[i].std = (double) (*env)->GetDoubleField(env, pestatObj, stdID);
+      }
+   }
+   return 1;
+}
+
 JNIEXPORT jboolean JNICALL
 Java_org_broadinstitute_hellbender_utils_bwa_BwaMemIndex_createReferenceIndex( JNIEnv* env, jclass cls, jstring jReferenceFileName, jstring jIndexPrefix, jstring jAlgoName) {
 
@@ -119,12 +143,14 @@ typedef struct {
 */
 JNIEXPORT jobject JNICALL
 Java_org_broadinstitute_hellbender_utils_bwa_BwaMemIndex_createAlignments(
-				JNIEnv* env, jclass cls, jobject seqsBuf, jlong idxAddr, jobject optsBuf ) {
+				JNIEnv* env, jclass cls, jobject seqsBuf, jlong idxAddr, jobject optsBuf, jobject peStatsArray ) {
 	bwaidx_t* pIdx = (bwaidx_t*)idxAddr;
 	mem_opt_t* pOpts = (*env)->GetDirectBufferAddress(env, optsBuf);
+	mem_pestat_t peStats[4];
+	int pestatProvided = jobject_to_mem_pestat_t(env, peStatsArray, peStats);
 	char* pSeq = (*env)->GetDirectBufferAddress(env, seqsBuf);
 	size_t bufSize = 0;
-	void* bufMem = jnibwa_createAlignments(pIdx, pOpts, pSeq, &bufSize);
+	void* bufMem = jnibwa_createAlignments(pIdx, pOpts, pestatProvided ? peStats : 0, pSeq, &bufSize);
 	jobject alnBuf = (*env)->NewDirectByteBuffer(env, bufMem, bufSize);
 	if ( !alnBuf ) free(bufMem);
 	return alnBuf;

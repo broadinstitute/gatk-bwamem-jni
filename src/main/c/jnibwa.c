@@ -194,7 +194,7 @@ void* jnibwa_getRefContigNames( bwaidx_t* pIdx, size_t* pBufSize ) {
 	return bufMem;
 }
 
-void* jnibwa_createAlignments( bwaidx_t* pIdx, mem_opt_t* pOpts, char* pSeq, size_t* pBufSize) {
+void* jnibwa_createAlignments( bwaidx_t* pIdx, mem_opt_t* pOpts, mem_pestat_t* pPestat, char* pSeq, size_t* pBufSize) {
 	char c = 0;
 	char* emptyString = &c;
 	uint32_t nSeqs = *(uint32_t*)pSeq;
@@ -211,7 +211,7 @@ void* jnibwa_createAlignments( bwaidx_t* pIdx, mem_opt_t* pOpts, char* pSeq, siz
 		pSeq += seqLen + 1;
 	}
 
-	mem_process_seqs(pOpts, pIdx->bwt, pIdx->bns, pIdx->pac, 0, nSeqs, pSeq1Beg, 0);
+	mem_process_seqs(pOpts, pIdx->bwt, pIdx->bns, pIdx->pac, 0, nSeqs, pSeq1Beg, pPestat);
 
 	size_t nInts = 0;
 	for ( pSeq1 = pSeq1Beg; pSeq1 != pSeq1End; ++pSeq1 ) {
