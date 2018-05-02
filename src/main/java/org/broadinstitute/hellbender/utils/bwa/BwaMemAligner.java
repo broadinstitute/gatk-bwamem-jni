@@ -21,7 +21,7 @@ public final class BwaMemAligner implements AutoCloseable {
     private final BwaMemIndex index;
     private ByteBuffer opts;
 
-    private BwaMemPairEndStats[] pairEndStats;
+    private BwaMemPairEndStats pairEndStats;
 
     public BwaMemAligner( final BwaMemIndex index ) {
         this.index = index;
@@ -158,10 +158,7 @@ public final class BwaMemAligner implements AutoCloseable {
      * that information is not-available.
      */
     public void dontInferPairEndStats() {
-        if (this.pairEndStats == null) {
-            this.pairEndStats = new BwaMemPairEndStats[BwaMemPairEndOrientation.values().length];
-        }
-        Arrays.fill(this.pairEndStats, BwaMemPairEndStats.FAILED);
+        pairEndStats = BwaMemPairEndStats.DO_NOT_INFER;
     }
 
     /**
@@ -169,21 +166,7 @@ public final class BwaMemAligner implements AutoCloseable {
      * @param stats
      */
     public void setProperPairEndStats(final BwaMemPairEndStats stats) {
-        setPairEndStats(BwaMemPairEndOrientation.FR, stats);
-    }
-
-    // Although you can indicate the stats for different orientations,
-    // for the sake of bwa-mem aligning only the FR orientation stat are relevant.
-    private void setPairEndStats(final BwaMemPairEndOrientation orientation,
-                                final BwaMemPairEndStats pairEndStats) {
-        if (orientation == null) {
-            throw new IllegalArgumentException("orientation cannot be null");
-        }
-        if (this.pairEndStats == null) {
-            this.pairEndStats = new BwaMemPairEndStats[BwaMemPairEndOrientation.values().length];
-            Arrays.fill(this.pairEndStats, BwaMemPairEndStats.FAILED);
-        }
-        this.pairEndStats[orientation.ordinal()] = pairEndStats;
+        pairEndStats = stats;
     }
 
     public BwaMemIndex getIndex() {

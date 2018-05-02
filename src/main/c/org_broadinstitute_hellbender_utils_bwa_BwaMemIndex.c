@@ -24,13 +24,16 @@ int jobject_to_mem_pestat_t(JNIEnv* env, jobject in, mem_pestat_t *out) {
    }
    memset(out, 0, sizeof(mem_pestat_t) * 4);
    for (int i = 0; i < 4; i++, out++) {
-      jobject pestatObj = (*env)->GetObjectArrayElement(env, in, i);
-      out->failed = (int) (*env)->GetBooleanField(env, pestatObj, peStatClass_failedID);
-      if (!out->failed) {
-        out->low = (int) (*env)->GetIntField(env, pestatObj, peStatClass_lowID);
-        out->high = (int) (*env)->GetIntField(env, pestatObj, peStatClass_highID);
-        out->avg = (double) (*env)->GetDoubleField(env, pestatObj, peStatClass_averageID);
-        out->std = (double) (*env)->GetDoubleField(env, pestatObj, peStatClass_stdID);
+      if (i == 1) {
+         out->failed = (int) (*env)->GetBooleanField(env, in, peStatClass_failedID);
+         if (!out->failed) {
+            out->low = (int) (*env)->GetIntField(env, in, peStatClass_lowID);
+            out->high = (int) (*env)->GetIntField(env, in, peStatClass_highID);
+            out->avg = (double) (*env)->GetDoubleField(env, in, peStatClass_averageID);
+            out->std = (double) (*env)->GetDoubleField(env, in, peStatClass_stdID);
+         }
+      } else {
+         out->failed = 1;
       }
    }
    return 1;
@@ -138,11 +141,11 @@ typedef struct {
 */
 JNIEXPORT jobject JNICALL
 Java_org_broadinstitute_hellbender_utils_bwa_BwaMemIndex_createAlignments(
-				JNIEnv* env, jclass cls, jobject seqsBuf, jlong idxAddr, jobject optsBuf, jobject peStatsArray ) {
+				JNIEnv* env, jclass cls, jobject seqsBuf, jlong idxAddr, jobject optsBuf, jobject frPEStats ) {
 	bwaidx_t* pIdx = (bwaidx_t*)idxAddr;
 	mem_opt_t* pOpts = (*env)->GetDirectBufferAddress(env, optsBuf);
 	mem_pestat_t peStats[4];
-	int pestatProvided = jobject_to_mem_pestat_t(env, peStatsArray, peStats);
+	int pestatProvided = jobject_to_mem_pestat_t(env, frPEStats, peStats);
 	char* pSeq = (*env)->GetDirectBufferAddress(env, seqsBuf);
 	size_t bufSize = 0;
 	void* bufMem = jnibwa_createAlignments(pIdx, pOpts, pestatProvided ? peStats : 0, pSeq, &bufSize);
