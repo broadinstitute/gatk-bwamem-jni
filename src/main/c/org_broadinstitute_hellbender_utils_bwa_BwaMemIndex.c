@@ -2,6 +2,7 @@
 #include <fcntl.h>
 #include <stdlib.h>
 #include "jnibwa.h"
+#include "init.h"
 #include "bwa/bwa_commit.h"
 
 
@@ -22,20 +23,14 @@ int jobject_to_mem_pestat_t(JNIEnv* env, jobject in, mem_pestat_t *out) {
      return 0;
    }
    memset(out, 0, sizeof(mem_pestat_t) * 4);
-   jclass pestatClass = (*env)->FindClass(env, "org/broadinstitute/hellbender/utils/bwa/BwaMemPairEndStats");
-   jfieldID failedID = (*env)->GetFieldID(env, pestatClass, "failed", "Z");
-   jfieldID lowID = (*env)->GetFieldID(env, pestatClass, "low", "I");
-   jfieldID highID = (*env)->GetFieldID(env, pestatClass, "high", "I");
-   jfieldID averageID = (*env)->GetFieldID(env, pestatClass, "average", "D");
-   jfieldID stdID = (*env)->GetFieldID(env, pestatClass, "std", "D");
-   for (int i = 0; i < 4; i++) {
+   for (int i = 0; i < 4; i++, out++) {
       jobject pestatObj = (*env)->GetObjectArrayElement(env, in, i);
-      out[i].failed = (int) (*env)->GetBooleanField(env, pestatObj, failedID);
-      if (!out[i].failed) {
-        out[i].low = (int) (*env)->GetIntField(env, pestatObj, lowID);
-        out[i].high = (int) (*env)->GetIntField(env, pestatObj, highID);
-        out[i].avg = (double) (*env)->GetDoubleField(env, pestatObj, averageID);
-        out[i].std = (double) (*env)->GetDoubleField(env, pestatObj, stdID);
+      out->failed = (int) (*env)->GetBooleanField(env, pestatObj, peStatClass_failedID);
+      if (!out->failed) {
+        out->low = (int) (*env)->GetIntField(env, pestatObj, peStatClass_lowID);
+        out->high = (int) (*env)->GetIntField(env, pestatObj, peStatClass_highID);
+        out->avg = (double) (*env)->GetDoubleField(env, pestatObj, peStatClass_averageID);
+        out->std = (double) (*env)->GetDoubleField(env, pestatObj, peStatClass_stdID);
       }
    }
    return 1;
