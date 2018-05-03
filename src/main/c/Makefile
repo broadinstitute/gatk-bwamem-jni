@@ -19,7 +19,7 @@ JNI_BASE_NAME=org_broadinstitute_hellbender_utils_bwa_BwaMemIndex
 
 all: libbwa.$(LIB_EXT)
 
-libbwa.$(LIB_EXT): $(JNI_BASE_NAME).o jnibwa.o bwa/libbwa.a
+libbwa.$(LIB_EXT): $(JNI_BASE_NAME).o init.o jnibwa.o bwa/libbwa.a
 	$(CC) -ggdb -dynamiclib -shared -o $@ $^ -lm -lz -lpthread
 
 bwa:
@@ -31,7 +31,9 @@ bwa/libbwa.a: bwa
 
 $(JNI_BASE_NAME).o: $(JNI_BASE_NAME).c jnibwa.h bwa
 
-jnibwa.o: jnibwa.c jnibwa.h bwa
+jnibwa.o: jnibwa.c jnibwa.h init.h bwa
+
+init.o: init.c init.h
 
 clean:
 	rm -rf bwa *.o *.$(LIB_EXT)

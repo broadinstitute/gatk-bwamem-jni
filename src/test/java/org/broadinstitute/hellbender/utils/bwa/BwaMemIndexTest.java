@@ -81,13 +81,23 @@ public final class BwaMemIndexTest {
         testAlignment(alignmentList.get(0), 70, 140, 0, 68, "32M2D36M", 2, 0); // 2-base deletion
     }
 
-    @Test
-    void testPair() {
+    @Test(dataProvider = "testPairData")
+    void testPair(final int defaultSetOrClearPEStats) {
         final List<String> seqs = new ArrayList<>();
         seqs.add("GGCTTTTAATGCTTTTCAGTGGTTGCTGCTCAAGATGGAGTCTACTCAGCAGATGGTAAGCTCTATTATT"); // ref.fa line 1
         seqs.add("TTGTTTTTAACACCAGAGTCATCCATCACATAATCAAATTTACTTTTAACTCTGGTAAATACTTCATTGT"); // rc ref.fa line 3
         final BwaMemAligner aligner = new BwaMemAligner(index);
         aligner.alignPairs();
+        switch (defaultSetOrClearPEStats) {
+            case 1:
+                aligner.setProperPairEndStats(new BwaMemPairEndStats(200, 10, 1, 600));
+                break;
+            case 2:
+                aligner.dontInferPairEndStats();
+                break;
+            default:
+                aligner.inferPairEndStats();
+        }
         final List<List<BwaMemAlignment>> alignments = aligner.alignSeqs(seqs,String::getBytes);
         Assert.assertNotNull(alignments);
         Assert.assertEquals(alignments.size(), 2);
@@ -95,16 +105,25 @@ public final class BwaMemIndexTest {
         Assert.assertNotNull(alignmentList);
         Assert.assertEquals(alignmentList.size(), 1);
         BwaMemAlignment alignment = alignmentList.get(0);
-        testAlignment(alignment, 0, 70, 0, 70, "70M", 0, 0x61);
+        testAlignment(alignment, 0, 70, 0, 70, "70M", 0, defaultSetOrClearPEStats == 1 ? 0x63 : 0x61);
         Assert.assertEquals(alignment.getMateRefStart(), 140);
         Assert.assertEquals(alignment.getTemplateLen(), 210);
         alignmentList = alignments.get(1);
         Assert.assertNotNull(alignmentList);
         Assert.assertEquals(alignmentList.size(), 1);
         alignment = alignmentList.get(0);
-        testAlignment(alignment, 140, 210, 0, 70, "70M", 0, 0x91);
+        testAlignment(alignment, 140, 210, 0, 70, "70M", 0, defaultSetOrClearPEStats == 1 ? 0x93 : 0x91);
         Assert.assertEquals(alignment.getMateRefStart(), 0);
         Assert.assertEquals(alignment.getTemplateLen(), -210);
+    }
+
+    @DataProvider(name = "testPairData")
+    public Object[][] testPairData() {
+        final List<Object[]> result = new ArrayList<>(3);
+        result.add(new Object[] { 0 });
+        result.add(new Object[] { 1 });
+        result.add(new Object[] { 2 });
+        return result.toArray(new Object[result.size()][]);
     }
 
     void testAlignment( final BwaMemAlignment alignment,

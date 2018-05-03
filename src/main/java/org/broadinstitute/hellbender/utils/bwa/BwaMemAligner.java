@@ -3,6 +3,7 @@ package org.broadinstitute.hellbender.utils.bwa;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.function.Function;
 
@@ -20,6 +21,8 @@ public final class BwaMemAligner implements AutoCloseable {
     private final BwaMemIndex index;
     private ByteBuffer opts;
 
+    private BwaMemPairEndStats pairEndStats;
+
     public BwaMemAligner( final BwaMemIndex index ) {
         this.index = index;
         if ( !index.isOpen() ) {
@@ -27,6 +30,7 @@ public final class BwaMemAligner implements AutoCloseable {
         }
         opts = BwaMemIndex.createDefaultOptions();
         opts.order(ByteOrder.nativeOrder()).position(0).limit(opts.capacity());
+        pairEndStats = null;
     }
 
     public boolean isOpen() { return opts != null; }
@@ -141,6 +145,30 @@ public final class BwaMemAligner implements AutoCloseable {
         setClip3PenaltyOption(5);
     }
 
+    /**
+     * Indicate that we want bwa-mem to infer pair-end inter-size stat from the sequences given.
+     * Only has effect in paired alignment.
+     */
+    public void inferPairEndStats() {
+        pairEndStats = null;
+    }
+
+    /**
+     * Tells the aligner to avoid trying to infer inter-size stats and just go with bwamem defaults when
+     * that information is not-available.
+     */
+    public void dontInferPairEndStats() {
+        pairEndStats = BwaMemPairEndStats.DO_NOT_INFER;
+    }
+
+    /**
+     * Indicate the pair-end inter size stats for "properly" oriented read-pairs.
+     * @param stats
+     */
+    public void setProperPairEndStats(final BwaMemPairEndStats stats) {
+        pairEndStats = stats;
+    }
+
     public BwaMemIndex getIndex() {
         return index;
     }
@@ -179,7 +207,7 @@ public final class BwaMemAligner implements AutoCloseable {
                 contigBuf.put(func.apply(ele)).put((byte) 0);
             }
             contigBuf.flip();
-            alignsBuf = index.doAlignment(contigBuf, tmpOpts);
+            alignsBuf = index.doAlignment(contigBuf, tmpOpts, pairEndStats);
         }
         finally {
             index.deRefIndex();

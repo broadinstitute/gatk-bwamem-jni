@@ -407,8 +407,8 @@ public final class BwaMemIndex implements AutoCloseable {
         return getVersion();
     }
 
-    ByteBuffer doAlignment( final ByteBuffer seqs, final ByteBuffer opts ) {
-        final ByteBuffer alignments = createAlignments(seqs, indexAddress, opts);
+    ByteBuffer doAlignment( final ByteBuffer seqs, final ByteBuffer opts, final BwaMemPairEndStats peStats) {
+        final ByteBuffer alignments = createAlignments(seqs, indexAddress, opts, peStats);
         if ( alignments == null ) {
             throw new IllegalStateException("Unable to get alignments from bwa-mem index "+indexImageFile+": We don't know why.");
         }
@@ -482,7 +482,7 @@ public final class BwaMemIndex implements AutoCloseable {
     private static native int destroyIndex( long indexAddress );
     static native ByteBuffer createDefaultOptions();
     private static native ByteBuffer getRefContigNames( long indexAddress );
-    private static native ByteBuffer createAlignments( ByteBuffer seqs, long indexAddress, ByteBuffer opts );
+    private static native ByteBuffer createAlignments( ByteBuffer seqs, long indexAddress, ByteBuffer opts, BwaMemPairEndStats peStats);
     static native void destroyByteBuffer( ByteBuffer alignments );
     private static native String getVersion();
 }

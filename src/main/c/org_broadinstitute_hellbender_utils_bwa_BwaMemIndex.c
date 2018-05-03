@@ -2,6 +2,7 @@
 #include <fcntl.h>
 #include <stdlib.h>
 #include "jnibwa.h"
+#include "init.h"
 #include "bwa/bwa_commit.h"
 
 
@@ -15,6 +16,27 @@ char * jstring_to_chars(JNIEnv* env, jstring in) {
 jint throwIllegalArgumentException(JNIEnv* env, char* message) {
    jclass iaeClass = (*env)->FindClass(env, "java/lang/IllegalArgumentException");
    return (*env)->ThrowNew(env, iaeClass, message);
+}
+
+int jobject_to_mem_pestat_t(JNIEnv* env, jobject in, mem_pestat_t *out) {
+   if (in == NULL) {
+     return 0;
+   }
+   memset(out, 0, sizeof(mem_pestat_t) * 4);
+   for (int i = 0; i < 4; i++, out++) {
+      if (i == 1) {
+         out->failed = (int) (*env)->GetBooleanField(env, in, peStatClass_failedID);
+         if (!out->failed) {
+            out->low = (int) (*env)->GetIntField(env, in, peStatClass_lowID);
+            out->high = (int) (*env)->GetIntField(env, in, peStatClass_highID);
+            out->avg = (double) (*env)->GetDoubleField(env, in, peStatClass_averageID);
+            out->std = (double) (*env)->GetDoubleField(env, in, peStatClass_stdID);
+         }
+      } else {
+         out->failed = 1;
+      }
+   }
+   return 1;
 }
 
 JNIEXPORT jboolean JNICALL
@@ -119,12 +141,14 @@ typedef struct {
 */
 JNIEXPORT jobject JNICALL
 Java_org_broadinstitute_hellbender_utils_bwa_BwaMemIndex_createAlignments(
-				JNIEnv* env, jclass cls, jobject seqsBuf, jlong idxAddr, jobject optsBuf ) {
+				JNIEnv* env, jclass cls, jobject seqsBuf, jlong idxAddr, jobject optsBuf, jobject frPEStats ) {
 	bwaidx_t* pIdx = (bwaidx_t*)idxAddr;
 	mem_opt_t* pOpts = (*env)->GetDirectBufferAddress(env, optsBuf);
+	mem_pestat_t peStats[4];
+	int pestatProvided = jobject_to_mem_pestat_t(env, frPEStats, peStats);
 	char* pSeq = (*env)->GetDirectBufferAddress(env, seqsBuf);
 	size_t bufSize = 0;
-	void* bufMem = jnibwa_createAlignments(pIdx, pOpts, pSeq, &bufSize);
+	void* bufMem = jnibwa_createAlignments(pIdx, pOpts, pestatProvided ? peStats : 0, pSeq, &bufSize);
 	jobject alnBuf = (*env)->NewDirectByteBuffer(env, bufMem, bufSize);
 	if ( !alnBuf ) free(bufMem);
 	return alnBuf;
