@@ -3,7 +3,6 @@
 #ifndef INIT_H
 #define INIT_H
 
-extern jclass peStatClass;
 extern jfieldID peStatClass_failedID;
 extern jfieldID peStatClass_lowID;
 extern jfieldID peStatClass_highID;
