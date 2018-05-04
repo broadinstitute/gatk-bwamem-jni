@@ -3,7 +3,7 @@ $(error $$(JAVA_HOME) is not defined)
 endif
 
 JNI_INCLUDE_DIRS=$(addprefix -I,$(shell find $(JAVA_HOME)/include -type d))
-CFLAGS=-ggdb -O2 -Wall -fPIC $(JNI_INCLUDE_DIRS)
+CFLAGS=-ggdb -O2 -Wall -std=gnu99  -D_BSD_SOURCE -fPIC $(JNI_INCLUDE_DIRS)
 CC=gcc
 
 #OS-dependent extension lookup
