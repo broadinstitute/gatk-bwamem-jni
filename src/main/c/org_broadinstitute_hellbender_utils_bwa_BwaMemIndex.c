@@ -157,7 +157,7 @@ Java_org_broadinstitute_hellbender_utils_bwa_BwaMemIndex_createAlignments(
 JNIEXPORT jobject JNICALL
 Java_org_broadinstitute_hellbender_utils_bwa_BwaMemIndex_createByteBuffer( JNIEnv* env, jclass cls, jint bufSize ) {
     void* bufMem = malloc(bufSize);
-	return (*env)->NewDirectByteBuffer(env, bufMem, bufSize);
+    return (*env)->NewDirectByteBuffer(env, bufMem, bufSize);
 }
 
 JNIEXPORT void JNICALL
