@@ -483,6 +483,7 @@ public final class BwaMemIndex implements AutoCloseable {
     static native ByteBuffer createDefaultOptions();
     private static native ByteBuffer getRefContigNames( long indexAddress );
     private static native ByteBuffer createAlignments( ByteBuffer seqs, long indexAddress, ByteBuffer opts, BwaMemPairEndStats peStats);
+    static native ByteBuffer createByteBuffer( int size );
     static native void destroyByteBuffer( ByteBuffer alignments );
     private static native String getVersion();
 }

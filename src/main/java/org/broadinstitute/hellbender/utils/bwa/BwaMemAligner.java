@@ -200,7 +200,7 @@ public final class BwaMemAligner implements AutoCloseable {
                 nSequences += 1;
                 bufferCapacity += func.apply(ele).length + 1; // sequence length bytes + 1 for the trailing null
             }
-            final ByteBuffer contigBuf = ByteBuffer.allocateDirect(bufferCapacity);
+            final ByteBuffer contigBuf = BwaMemIndex.createByteBuffer(bufferCapacity);
             contigBuf.order(ByteOrder.nativeOrder());
             contigBuf.putInt(nSequences);
             for ( final T ele : iterable ) {
@@ -208,6 +208,7 @@ public final class BwaMemAligner implements AutoCloseable {
             }
             contigBuf.flip();
             alignsBuf = index.doAlignment(contigBuf, tmpOpts, pairEndStats);
+            BwaMemIndex.destroyByteBuffer(contigBuf);
         }
         finally {
             index.deRefIndex();
