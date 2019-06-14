@@ -21,16 +21,16 @@ public final class BwaMemAligner implements AutoCloseable {
     private final BwaMemIndex index;
     private ByteBuffer opts;
 
-    private BwaMemPairEndStats pairEndStats;
-
     public BwaMemAligner( final BwaMemIndex index ) {
         this.index = index;
         if ( !index.isOpen() ) {
-            throw new IllegalStateException("Can't create aligner: bwa-mem index has been closed");
+            throw new BwaMemException("Can't create aligner: bwa-mem index has been closed");
         }
         opts = BwaMemIndex.createDefaultOptions();
+        if ( opts == null ) {
+            throw new BwaMemException("unable to retrieve default options for bwa-mem");
+        }
         opts.order(ByteOrder.nativeOrder()).position(0).limit(opts.capacity());
-        pairEndStats = null;
     }
 
     public boolean isOpen() { return opts != null; }
@@ -130,11 +130,24 @@ public final class BwaMemAligner implements AutoCloseable {
         tmpOpts.get(result);
         return result; }
     public void setScoringMatrixOption( final byte[] mat ) {
+        if ( mat.length != 25 ) {
+            throw new BwaMemException("scoring matrix must be exactly 25 bytes long");
+        }
         final ByteBuffer tmpOpts = getOpts();
         tmpOpts.position(140);
         tmpOpts.put(mat);
     }
-    int getExpectedOptsSize() { return 168; }
+    private void setPEStats( final BwaMemPairEndStats peStats ) {
+        final ByteBuffer opts = getOpts();
+        opts.put(167, (byte)1);
+        opts.putInt(168, peStats.getLow());
+        opts.putInt(172, peStats.getHigh());
+        opts.putInt(176, peStats.isFailed() ? 1 : 0);
+        opts.putDouble(184, peStats.getAverage());
+        opts.putDouble(192, peStats.getStd());
+    }
+
+    int getExpectedOptsSize() { return 168 + 32; } // sizeof(mem_opt_t) + sizeof(mem_pestat_t)
     int getOptsSize() { return getOpts().capacity(); }
 
     public void setIntraCtgOptions() {
@@ -150,7 +163,7 @@ public final class BwaMemAligner implements AutoCloseable {
      * Only has effect in paired alignment.
      */
     public void inferPairEndStats() {
-        pairEndStats = null;
+        opts.put(167, (byte)0);
     }
 
     /**
@@ -158,7 +171,7 @@ public final class BwaMemAligner implements AutoCloseable {
      * that information is not-available.
      */
     public void dontInferPairEndStats() {
-        pairEndStats = BwaMemPairEndStats.DO_NOT_INFER;
+        setPEStats(BwaMemPairEndStats.DO_NOT_INFER);
     }
 
     /**
@@ -166,7 +179,7 @@ public final class BwaMemAligner implements AutoCloseable {
      * @param stats
      */
     public void setProperPairEndStats(final BwaMemPairEndStats stats) {
-        pairEndStats = stats;
+        setPEStats(stats);
     }
 
     public BwaMemIndex getIndex() {
@@ -190,7 +203,6 @@ public final class BwaMemAligner implements AutoCloseable {
      * @return A list of (possibly multiple) alignments for each input sequence.
      */
     public <T> List<List<BwaMemAlignment>> alignSeqs( final Iterable<T> iterable, final Function<T,byte[]> func ) {
-        final ByteBuffer tmpOpts = getOpts();
         index.refIndex(); // tell the index that we're doing some aligning so that it can't be closed
         final ByteBuffer alignsBuf;
         int nSequences = 0;
@@ -201,13 +213,16 @@ public final class BwaMemAligner implements AutoCloseable {
                 bufferCapacity += func.apply(ele).length + 1; // sequence length bytes + 1 for the trailing null
             }
             final ByteBuffer contigBuf = BwaMemIndex.createByteBuffer(bufferCapacity);
+            if ( contigBuf == null ) {
+                throw new BwaMemException("unable to create a buffer for passing reads to bwa-mem");
+            }
             contigBuf.order(ByteOrder.nativeOrder());
             contigBuf.putInt(nSequences);
             for ( final T ele : iterable ) {
                 contigBuf.put(func.apply(ele)).put((byte) 0);
             }
             contigBuf.flip();
-            alignsBuf = index.doAlignment(contigBuf, tmpOpts, pairEndStats);
+            alignsBuf = index.doAlignment(contigBuf, getOpts());
             BwaMemIndex.destroyByteBuffer(contigBuf);
         }
         finally {
@@ -321,7 +336,7 @@ public final class BwaMemAligner implements AutoCloseable {
 
     private ByteBuffer getOpts() {
         if ( opts == null ) {
-            throw new IllegalStateException("The aligner has been closed.");
+            throw new BwaMemException("The aligner has been closed.");
         }
         return opts;
     }

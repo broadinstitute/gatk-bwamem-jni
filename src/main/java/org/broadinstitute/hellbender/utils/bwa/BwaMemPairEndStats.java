@@ -33,30 +33,23 @@ public final class BwaMemPairEndStats {
     public static final double DEFAULT_STD_TO_AVERAGE_RATIO = .1;
 
     /**
-     * Constant to indicate that pair-end insert size inference failed or that it should not be inferred depending on
-     * the context.
+     * Constant to indicate that paired-end insert size distribution is unavailable, and should not be calculated by BWA.
      */
-    public static final BwaMemPairEndStats FAILED = new BwaMemPairEndStats();
-
-    /**
-     * Constant to indicate that pair-end insert size inference failed or hat is should not be inferred depending on
-     * the context.
-     */
-    public static final BwaMemPairEndStats DO_NOT_INFER = FAILED;
+    public static final BwaMemPairEndStats DO_NOT_INFER = new BwaMemPairEndStats();
 
     /**
      * The shortest insert size that is considered normal.
      * <br/>
      * Only defined if {@link #failed} is {@code false}, and if so is always in the [1..{@link #average}] range.
      */
-    public final int low;
+    private final int low;
 
     /**
      * The longest insert size that is considered normal.
      * <br/>
      * Only defined if {@link #failed} is {@code false}, and if so is always in the [#average .. +Inf) range.
      */
-    public final int high;
+    private final int high;
 
     /**
      * Depending on the context, indicates iff the insert-size inference failed or
@@ -64,42 +57,22 @@ public final class BwaMemPairEndStats {
      * <br/>
      * When this field is {@code true}, nothing can be expected on what values other fields take.
      */
-    public final boolean failed;
+    private final boolean failed;
 
     /**
      * The average insert size.
      * <br/>
      * Only defined if {@link #failed} is {@code false}, and if so is always in the range [1 .. +Inf).
      */
-    public final double average;
+    private final double average;
 
     /**
      * The insert size std. deviation.
      * <br/>
      * Only defined if {@link #failed} is {@code false}, and if so is finite and equal or greater than 0.
      */
-    public final double std;
+    private final double std;
 
-
-    /**
-     * Composes a new instance given the estimated average and std. deviation
-     * <p>
-     *     low and high limits are calculated using the recipe use in bwa mem's code-base
-     *     where the 4th sigma is used as the upper limit rounding it to the closest integer.
-     * </p>
-     * <p>
-     *     The resulting stats object's {@link #failed} field will be set to {@code false}.
-     * </p>
-     * @param average the insert size average estimate.
-     * @param std the insert size standard deviation estimate.
-     * @throws IllegalArgumentException if either input is {@link Double#NaN}, infinite. Also if the average is
-     *  less than 1.0 and if the std. deviation is strictly negative.
-     */
-    public BwaMemPairEndStats(final double average, final double std) {
-        this(average, std,
-         /* low  = */ Math.max(1, (int) Math.round(average - DEFAULT_LOW_AND_HIGH_SIGMA * std)),
-         /* high = */ Math.max(1, (int) Math.round(average + DEFAULT_LOW_AND_HIGH_SIGMA * std)));
-    }
 
     /**
      * Composes a new instance given the estimated average.
@@ -124,6 +97,26 @@ public final class BwaMemPairEndStats {
     }
 
     /**
+     * Composes a new instance given the estimated average and std. deviation
+     * <p>
+     *     low and high limits are calculated using the recipe use in bwa mem's code-base
+     *     where the 4th sigma is used as the upper limit rounding it to the closest integer.
+     * </p>
+     * <p>
+     *     The resulting stats object's {@link #failed} field will be set to {@code false}.
+     * </p>
+     * @param average the insert size average estimate.
+     * @param std the insert size standard deviation estimate.
+     * @throws IllegalArgumentException if either input is {@link Double#NaN}, infinite. Also if the average is
+     *  less than 1.0 and if the std. deviation is strictly negative.
+     */
+    public BwaMemPairEndStats(final double average, final double std) {
+        this(average, std,
+         /* low  = */ Math.max(1, (int) Math.round(average - DEFAULT_LOW_AND_HIGH_SIGMA * std)),
+         /* high = */ Math.max(1, (int) Math.round(average + DEFAULT_LOW_AND_HIGH_SIGMA * std)));
+    }
+
+    /**
      * Composes a new instance giving arbitrary (albeit valid and consistent) values to all its numerical
      * fields: {@link #average}, {@link #std}, {@link #low} and {@link #high}.
      * <p>
@@ -140,23 +133,25 @@ public final class BwaMemPairEndStats {
     public BwaMemPairEndStats(final double average, final double std, final int low, final int high) {
         if (Double.isNaN(average) || !Double.isFinite(average) || average < 1) {
             throw new IllegalArgumentException("invalid input average: " + average);
-        } else if (Double.isNaN(std) || !Double.isFinite(std) || std < 0) {
-            throw new IllegalArgumentException("invalid std. err: " + std);
-        } else if (low > average) {
-            throw new IllegalArgumentException("the low limit cannot be larger than the average");
-        } else if (high < average) {
-            throw new IllegalArgumentException("the high limit cannot be larger than the average");
-        } else {
-            this.failed = false;
-            this.average = average;
-            this.std = std;
-            this.high = high;
-            this.low = low;
         }
+        if (Double.isNaN(std) || !Double.isFinite(std) || std < 0) {
+            throw new IllegalArgumentException("invalid std. err: " + std);
+        }
+        if (low > average) {
+            throw new IllegalArgumentException("the low limit cannot be larger than the average");
+        }
+        if (high < average) {
+            throw new IllegalArgumentException("the high limit cannot be larger than the average");
+        }
+        this.failed = false;
+        this.average = average;
+        this.std = std;
+        this.high = high;
+        this.low = low;
     }
 
     /**
-     * Constructor used to create the singleton {@link #FAILED} instance.
+     * Constructor used to create the singleton {@link #DO_NOT_INFER} instance.
      */
     private BwaMemPairEndStats() {
         this.failed = true;
@@ -165,6 +160,12 @@ public final class BwaMemPairEndStats {
         this.low = Integer.MAX_VALUE;
         this.high = Integer.MIN_VALUE;
     }
+
+    public boolean isFailed() { return failed; }
+    public double getAverage() { return average; }
+    public double getStd() { return std; }
+    public int getLow() { return low; }
+    public int getHigh() { return high; }
 
     @Override
     public String toString() {
@@ -181,25 +182,23 @@ public final class BwaMemPairEndStats {
 
     @Override
     public int hashCode() {
-        if (this.failed) {
+        if (failed) {
             return 0;
-        } else {
-            return ((((Double.hashCode(average) * 31) +
-                    Double.hashCode(std) * 31) +
-                    Integer.hashCode(low) * 31) +
-                    Integer.hashCode(high) * 31);
         }
+        return ((((Double.hashCode(average) * 31) +
+                Double.hashCode(std) * 31) +
+                Integer.hashCode(low) * 31) +
+                Integer.hashCode(high) * 31);
     }
 
     public boolean equals(final BwaMemPairEndStats other) {
         if (other == null || this.failed != other.failed) {
             return false;
-        } else {
-            return this.failed || (this.average == other.average &&
-                    this.std == other.std &&
-                    this.low == other.low && this.high == other.high);
         }
+        return this.failed ||
+                (this.average == other.average &&
+                        this.std == other.std &&
+                        this.low == other.low &&
+                        this.high == other.high);
     }
-
-
 }
