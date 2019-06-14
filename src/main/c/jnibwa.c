@@ -135,7 +135,7 @@ static size_t bufLen( int32_t* pBuf ) {
 void jnibwa_indexReference( char const* refFileName, char const* indexPrefix, int algo, char** pErrMsg ) {
     int result = bwa_idx_build( refFileName, indexPrefix, algo, -1);
     if ( result ) {
-        char errnum[31];
+        char errnum[12]; //-2147483648\0
         sprintf(errnum, "%d", result);
         *pErrMsg = createErrorMessage("Reference %s not indexed: bwa_idx_build returned %s.", refFileName, errnum);
     }
