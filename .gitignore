@@ -5,4 +5,5 @@ src/main/c/bwa
 src/main/c/*.o
 src/main/c/*.dylib
 src/main/c/*.so
+src/main/c/libbwa.Darwin.dylib.dSYM
 *.swp

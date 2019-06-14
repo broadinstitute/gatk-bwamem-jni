@@ -77,7 +77,10 @@ Java_org_broadinstitute_hellbender_utils_bwa_BwaMemIndex_createDefaultOptions( J
     memcpy(defaults, opts, sizeof(mem_opt_t));
     free(opts);
     jobject result = (*env)->NewDirectByteBuffer(env, defaults, defaultsSize);
-    if ( !result ) throwErrorMessage(env, strdup("unable to create ByteBuffer for default options"));
+    if ( !result ) {
+        free(defaults);
+        throwErrorMessage(env, strdup("unable to create ByteBuffer for default options"));
+    }
     return result;
 }
 
@@ -193,7 +196,10 @@ Java_org_broadinstitute_hellbender_utils_bwa_BwaMemIndex_createByteBuffer( JNIEn
         return 0;
     }
     jobject result = (*env)->NewDirectByteBuffer(env, bufMem, bufSize);
-    if ( !result ) throwErrorMessage(env, strdup("can't create ByteBuffer"));
+    if ( !result ) {
+        free(bufMem);
+        throwErrorMessage(env, strdup("can't create ByteBuffer"));
+    }
     return result;
 }
 

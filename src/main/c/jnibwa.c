@@ -267,6 +267,7 @@ void* jnibwa_createAlignments( bwaidx_t* pIdx, mem_opt_t* pOpts, mem_pestat_t* p
     }
     int32_t* resultsBeg = malloc(nInts*sizeof(int32_t));
     if ( !resultsBeg ) {
+        free(pSeq1Beg);
         *pErrMsg = strdup("Can't allocate memory for alignment results.");
         return 0;
     }
